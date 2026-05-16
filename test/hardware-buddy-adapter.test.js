@@ -488,6 +488,24 @@ describe("hardware buddy adapter", () => {
     );
   });
 
+  it("ignores the fake secure setting for non-fake backends", () => {
+    resetFakes();
+    const adapter = createHardwareBuddyAdapter({
+      env: {
+        CLAWD_HARDWARE_BUDDY: "1",
+        CLAWD_HARDWARE_BUDDY_BACKEND: "bleak",
+        CLAWD_HARDWARE_BUDDY_FAKE_SECURE: "false",
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+    });
+
+    adapter.start();
+    assert.equal(FakeSidecarClient.instances[0].options.args.includes("--fake-secure"), false);
+  });
+
   it("stops the hardware adapter before permission cleanup during app quit", () => {
     const source = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
     const start = source.indexOf('app.on("before-quit"');
