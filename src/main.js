@@ -40,6 +40,7 @@ const createThemeRuntime = require("./theme-runtime");
 const createAgentRuntimeMain = require("./agent-runtime-main");
 const createFloatingWindowRuntime = require("./floating-window-runtime");
 const createPetWindowRuntime = require("./pet-window-runtime");
+const { createHardwareBuddyAdapter } = require("./hardware-buddy-adapter");
 const {
   getFocusableLocalHudSessionIds: selectFocusableLocalHudSessionIds,
   getSessionFocusTarget,
@@ -178,6 +179,7 @@ let telegramApprovalSidecar = null;
 let telegramApprovalSyncPromise = Promise.resolve();
 let telegramApprovalConfigSignature = "";
 let telegramApprovalTokenRevision = 0;
+let hardwareBuddyAdapter = null;
 const shortcutHandlers = {
   togglePet: () => togglePetVisibility(),
 };
@@ -949,6 +951,7 @@ const _stateCtx = {
     broadcastDashboardSessionSnapshot(snapshot);
     broadcastSessionHudSnapshot(snapshot);
     repositionFloatingBubbles();
+    if (hardwareBuddyAdapter) hardwareBuddyAdapter.notifyStateChanged();
   },
   // Phase 3b: 读 prefs.themeOverrides 判断某个 oneshot state 是否被用户禁用。
   // state.js gate 调这个做 early-return。不做白名单校验——settings-actions
@@ -1442,6 +1445,28 @@ async function sendTelegramApprovalTest() {
     clearTimeout(timer);
   }
 }
+
+function hardwareBuddyLog(msg) {
+  const line = `[hardware-buddy] ${msg}`;
+  if (sessionDebugLog) {
+    sessionLog(line);
+  } else {
+    console.log(`Clawd: ${line}`);
+  }
+}
+
+hardwareBuddyAdapter = createHardwareBuddyAdapter({
+  env: process.env,
+  getSessionSnapshot: () => _state.buildSessionSnapshot(),
+  getPendingPermissions: () => pendingPermissions,
+  getDoNotDisturb: () => doNotDisturb,
+  isAgentEnabled: (agentId) => _isAgentEnabled({ agents: _settingsController.get("agents") }, agentId),
+  isAgentPermissionsEnabled: (agentId) =>
+    _isAgentPermissionsEnabled({ agents: _settingsController.get("agents") }, agentId),
+  resolvePermissionEntry: (...args) => resolvePermissionEntry(...args),
+  statePriority: _state.STATE_PRIORITY,
+  log: hardwareBuddyLog,
+});
 
 // ── Menu — delegated to src/menu.js ──
 //
@@ -2101,6 +2126,13 @@ if (!gotTheLock) {
     // shouldn't see its file watcher spin up on the next launch.
     agentRuntime.startCodexLogMonitor();
 
+    try {
+      hardwareBuddyAdapter.start();
+    } catch (err) {
+      console.warn("Clawd: failed to start Hardware Buddy adapter:", err && err.message);
+      hardwareBuddyLog(`start failed: ${err && err.message ? err.message : err}`);
+    }
+
     // Auto-install VS Code/Cursor terminal-focus extension
     try { installTerminalFocusExtension(); } catch (err) {
       console.warn("Clawd: failed to auto-install terminal-focus extension:", err.message);
@@ -2120,6 +2152,7 @@ if (!gotTheLock) {
     _server.cleanup();
     _updateBubble.cleanup();
     _state.cleanup();
+    if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
     _tick.cleanup();
     _mini.cleanup();
     _sessionHud.cleanup();
