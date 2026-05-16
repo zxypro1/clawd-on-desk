@@ -86,6 +86,7 @@ function createHardwareBuddyAdapter(options = {}) {
   const autoConnectAddress = options.autoConnectAddress || env.CLAWD_HARDWARE_BUDDY_ADDRESS || "";
   const keepaliveMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_KEEPALIVE_MS, 10000);
   const autoConnectDelayMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_DELAY_MS, 1000);
+  const autoConnectRetryMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS, 5000);
   const notifyDebounceMs = options.notifyDebounceMs != null
     ? numberFromEnv(options.notifyDebounceMs, 50)
     : numberFromEnv(env.CLAWD_HARDWARE_BUDDY_NOTIFY_DEBOUNCE_MS, 50);
@@ -103,6 +104,19 @@ function createHardwareBuddyAdapter(options = {}) {
   function clearAutoConnectTimer() {
     if (autoConnectTimer) clearTimer(autoConnectTimer);
     autoConnectTimer = null;
+  }
+
+  function isSidecarConnected() {
+    return !!(sidecar && sidecar.transport && sidecar.transport.connected === true);
+  }
+
+  function scheduleAutoConnect(delayMs) {
+    if (!autoConnectAddress || autoConnectTimer || !started || !sidecar || isSidecarConnected()) return;
+    autoConnectTimer = setTimer(() => {
+      autoConnectTimer = null;
+      if (!started || !sidecar || isSidecarConnected()) return;
+      sidecar.connect(autoConnectAddress);
+    }, delayMs);
   }
 
   function clearStateNotifyTimer() {
@@ -170,8 +184,16 @@ function createHardwareBuddyAdapter(options = {}) {
       onDevices: (items) => {
         lastDevices = Array.isArray(items) ? items.slice() : [];
       },
-      onError: (err) => log(`sidecar error: ${err && err.message ? err.message : err}`),
-      onTransportStateChanged: () => {
+      onError: (err) => {
+        log(`sidecar error: ${err && err.message ? err.message : err}`);
+        scheduleAutoConnect(autoConnectRetryMs);
+      },
+      onTransportStateChanged: (state) => {
+        if (state && state.connected === true) {
+          clearAutoConnectTimer();
+        } else {
+          scheduleAutoConnect(autoConnectRetryMs);
+        }
         // Link security/connectivity changes must retract or restore prompt fields immediately.
         if (controller && typeof controller.notifyStateChanged === "function") {
           controller.notifyStateChanged();
@@ -205,10 +227,7 @@ function createHardwareBuddyAdapter(options = {}) {
     log(`started backend=${env.CLAWD_HARDWARE_BUDDY_BACKEND || "bleak"} permissions=${permissionsEnabled ? "on" : "off"}`);
 
     if (autoConnectAddress) {
-      autoConnectTimer = setTimer(() => {
-        if (!started || !sidecar) return;
-        sidecar.connect(autoConnectAddress);
-      }, autoConnectDelayMs);
+      scheduleAutoConnect(autoConnectDelayMs);
     }
     return true;
   }

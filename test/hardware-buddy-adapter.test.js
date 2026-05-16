@@ -19,6 +19,7 @@ class FakeSidecarClient {
     this.sent = [];
     this.commandListeners = [];
     this.transport = {
+      connected: false,
       secure: false,
       send: (snapshot, meta) => this.sent.push({ snapshot, meta }),
       onCommand: (listener) => {
@@ -57,8 +58,25 @@ class FakeSidecarClient {
   setSecure(secure) {
     this.transport.secure = secure === true;
     if (typeof this.options.onTransportStateChanged === "function") {
-      this.options.onTransportStateChanged();
+      this.options.onTransportStateChanged({
+        connected: this.transport.connected === true,
+        secure: this.transport.secure === true,
+      });
     }
+  }
+
+  setConnected(connected) {
+    this.transport.connected = connected === true;
+    if (typeof this.options.onTransportStateChanged === "function") {
+      this.options.onTransportStateChanged({
+        connected: this.transport.connected === true,
+        secure: this.transport.secure === true,
+      });
+    }
+  }
+
+  emitError(error) {
+    if (typeof this.options.onError === "function") this.options.onError(error);
   }
 }
 FakeSidecarClient.instances = [];
@@ -465,6 +483,47 @@ describe("hardware buddy adapter", () => {
     adapter.start();
     await new Promise((resolve) => setTimeout(resolve, 5));
     assert.deepStrictEqual(FakeSidecarClient.instances[0].connects, ["FAKE:CLAWSTICK"]);
+  });
+
+  it("retries auto-connect after a connection error", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const adapter = createHardwareBuddyAdapter({
+      env: {
+        CLAWD_HARDWARE_BUDDY: "1",
+        CLAWD_HARDWARE_BUDDY_BACKEND: "fake",
+        CLAWD_HARDWARE_BUDDY_ADDRESS: "FAKE:CLAWSTICK",
+        CLAWD_HARDWARE_BUDDY_CONNECT_DELAY_MS: "10",
+        CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS: "25",
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    adapter.start();
+    assert.strictEqual(fakeTimers.timers.length, 1);
+    assert.strictEqual(fakeTimers.timers[0].ms, 10);
+
+    fakeTimers.timers[0].fn();
+    const sidecar = FakeSidecarClient.instances[0];
+    assert.deepStrictEqual(sidecar.connects, ["FAKE:CLAWSTICK"]);
+
+    sidecar.emitError({ message: "device not found", code: "NO_DEVICE" });
+    const retryTimer = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25);
+    assert.ok(retryTimer);
+
+    retryTimer.fn();
+    assert.deepStrictEqual(sidecar.connects, ["FAKE:CLAWSTICK", "FAKE:CLAWSTICK"]);
+
+    sidecar.emitError({ message: "device not found", code: "NO_DEVICE" });
+    const secondRetry = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25 && timer !== retryTimer);
+    assert.ok(secondRetry);
+    sidecar.setConnected(true);
+    assert.strictEqual(secondRetry.cleared, true);
   });
 
   it("passes the fake secure setting through to the sidecar", () => {
