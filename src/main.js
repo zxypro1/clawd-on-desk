@@ -824,6 +824,9 @@ const _permCtx = {
   clearShortcutFailure: (actionId) => shortcutRuntime.clearFailure(actionId),
   repositionUpdateBubble: () => repositionUpdateBubble(),
   getTelegramApprovalClient: () => getTelegramApprovalClient(),
+  onPermissionsChanged: () => {
+    if (hardwareBuddyAdapter) hardwareBuddyAdapter.notifyPermissionsChanged();
+  },
 };
 const _perm = initPermission(_permCtx);
 const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, maybeStartRemoteApproval, showCodexNotifyBubble, clearCodexNotifyBubbles, showKimiNotifyBubble, clearKimiNotifyBubbles, syncPermissionShortcuts, replyOpencodePermission } = _perm;
@@ -2148,10 +2151,10 @@ if (!gotTheLock) {
     globalShortcut.unregisterAll();
     void settingsSizePreviewSession.cleanup();
     stopTelegramApprovalSidecar();
+    if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
     _perm.cleanup();
     _server.cleanup();
     _updateBubble.cleanup();
-    if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();

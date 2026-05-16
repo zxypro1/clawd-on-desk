@@ -214,6 +214,8 @@ function createHardwareBuddyAdapter(options = {}) {
   }
 
   function notifyStateChanged() {
+    // Session-state broadcasts are debounced; transport security/connectivity
+    // changes use onTransportStateChanged above so prompt fields retract fast.
     if (!started || !controller || typeof controller.notifyStateChanged !== "function") return null;
     if (notifyDebounceMs <= 0) return emitStateChange();
     if (stateNotifyTimer) return true;

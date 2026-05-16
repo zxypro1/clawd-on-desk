@@ -2,6 +2,8 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   createHardwareBuddyAdapter,
@@ -15,10 +17,17 @@ class FakeSidecarClient {
     this.stopped = false;
     this.connects = [];
     this.sent = [];
+    this.commandListeners = [];
     this.transport = {
       secure: false,
       send: (snapshot, meta) => this.sent.push({ snapshot, meta }),
-      onCommand: () => () => {},
+      onCommand: (listener) => {
+        this.commandListeners.push(listener);
+        return () => {
+          const idx = this.commandListeners.indexOf(listener);
+          if (idx !== -1) this.commandListeners.splice(idx, 1);
+        };
+      },
       isSecure: () => this.transport.secure === true,
     };
     FakeSidecarClient.instances.push(this);
@@ -35,6 +44,21 @@ class FakeSidecarClient {
   connect(address) {
     this.connects.push(address);
     return true;
+  }
+
+  injectCommand(command) {
+    return this.commandListeners.map((listener) => listener(command));
+  }
+
+  lastSent() {
+    return this.sent[this.sent.length - 1] || null;
+  }
+
+  setSecure(secure) {
+    this.transport.secure = secure === true;
+    if (typeof this.options.onTransportStateChanged === "function") {
+      this.options.onTransportStateChanged();
+    }
   }
 }
 FakeSidecarClient.instances = [];
@@ -77,9 +101,99 @@ class FakeHardwareBuddyController {
 }
 FakeHardwareBuddyController.instances = [];
 
+class PromptingHardwareBuddyController {
+  constructor(options) {
+    this.options = options;
+    this.started = false;
+    this.stopped = false;
+    this.unsubscribe = null;
+    PromptingHardwareBuddyController.instances.push(this);
+  }
+
+  start() {
+    this.started = true;
+    if (this.options.transport && typeof this.options.transport.onCommand === "function") {
+      this.unsubscribe = this.options.transport.onCommand((command) => this.handleCommand(command));
+    }
+    return this.emitSnapshot("start");
+  }
+
+  stop() {
+    this.stopped = true;
+    if (typeof this.unsubscribe === "function") this.unsubscribe();
+    this.unsubscribe = null;
+  }
+
+  notifyStateChanged() {
+    return this.emitSnapshot("state-change");
+  }
+
+  notifyPermissionsChanged() {
+    return this.emitSnapshot("permission-change");
+  }
+
+  isSecure() {
+    const transport = this.options.transport;
+    if (transport && typeof transport.isSecure === "function") return transport.isSecure() === true;
+    return !!(transport && transport.secure === true);
+  }
+
+  pending() {
+    return typeof this.options.getPendingPermissions === "function"
+      ? this.options.getPendingPermissions()
+      : [];
+  }
+
+  buildSnapshot() {
+    const entries = this.pending();
+    const first = entries[0] || null;
+    const snapshot = {
+      total: 0,
+      running: 0,
+      waiting: this.isSecure() ? entries.length : 0,
+      msg: "",
+      entries: [],
+      tokens: 0,
+      tokens_today: 0,
+    };
+    if (this.isSecure() && first) {
+      snapshot.prompt = {
+        id: "hb_1",
+        tool: first.toolName || "Unknown",
+        hint: "",
+      };
+      snapshot.msg = `approve: ${snapshot.prompt.tool}`;
+    }
+    return snapshot;
+  }
+
+  emitSnapshot(reason) {
+    const snapshot = this.buildSnapshot();
+    if (this.options.transport && typeof this.options.transport.send === "function") {
+      this.options.transport.send(snapshot, { reason });
+    }
+    return snapshot;
+  }
+
+  handleCommand(command) {
+    if (!command || command.cmd !== "permission") return false;
+    if (!this.isSecure()) return false;
+    if (command.id !== "hb_1") return false;
+    const behavior = command.decision === "once" ? "allow" : (command.decision === "deny" ? "deny" : null);
+    if (!behavior) return false;
+    const entry = this.pending()[0] || null;
+    if (!entry || typeof this.options.resolvePermissionEntry !== "function") return false;
+    this.options.resolvePermissionEntry(entry, behavior);
+    this.emitSnapshot("permission-reply");
+    return true;
+  }
+}
+PromptingHardwareBuddyController.instances = [];
+
 function resetFakes() {
   FakeSidecarClient.instances.length = 0;
   FakeHardwareBuddyController.instances.length = 0;
+  PromptingHardwareBuddyController.instances.length = 0;
 }
 
 function createFakeTimers() {
@@ -177,6 +291,61 @@ describe("hardware buddy adapter", () => {
     assert.deepStrictEqual(controller.options.getPendingPermissions(), [perm]);
     assert.strictEqual(controller.options.resolvePermissionEntry, resolvePermissionEntry);
     assert.strictEqual(controller.options.statePriority, statePriority);
+  });
+
+  it("does not invoke the resolver when transport is insecure even with permissions on", () => {
+    resetFakes();
+    const perm = { toolName: "Bash" };
+    const resolved = [];
+    const adapter = createHardwareBuddyAdapter({
+      env: { CLAWD_HARDWARE_BUDDY: "1" },
+      permissionsEnabled: true,
+      coreModules: {
+        HardwareBuddyController: PromptingHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      getPendingPermissions: () => [perm],
+      resolvePermissionEntry: (entry, behavior) => resolved.push({ entry, behavior }),
+    });
+
+    adapter.start();
+    const sidecar = FakeSidecarClient.instances[0];
+    assert.ok(!Object.prototype.hasOwnProperty.call(sidecar.lastSent().snapshot, "prompt"));
+
+    sidecar.injectCommand({ cmd: "permission", id: "hb_1", decision: "once" });
+
+    assert.deepStrictEqual(resolved, []);
+    adapter.stop();
+  });
+
+  it("emits prompts only after the transport becomes secure", () => {
+    resetFakes();
+    const perm = { toolName: "Bash" };
+    const adapter = createHardwareBuddyAdapter({
+      env: { CLAWD_HARDWARE_BUDDY: "1" },
+      permissionsEnabled: true,
+      coreModules: {
+        HardwareBuddyController: PromptingHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      getPendingPermissions: () => [perm],
+      resolvePermissionEntry: () => {},
+    });
+
+    adapter.start();
+    const sidecar = FakeSidecarClient.instances[0];
+    assert.ok(!Object.prototype.hasOwnProperty.call(sidecar.lastSent().snapshot, "prompt"));
+
+    sidecar.setSecure(true);
+    assert.deepStrictEqual(sidecar.lastSent().snapshot.prompt, {
+      id: "hb_1",
+      tool: "Bash",
+      hint: "",
+    });
+
+    sidecar.setSecure(false);
+    assert.ok(!Object.prototype.hasOwnProperty.call(sidecar.lastSent().snapshot, "prompt"));
+    adapter.stop();
   });
 
   it("logs when permission mode is enabled without a resolver", () => {
@@ -296,5 +465,18 @@ describe("hardware buddy adapter", () => {
     adapter.start();
     await new Promise((resolve) => setTimeout(resolve, 5));
     assert.deepStrictEqual(FakeSidecarClient.instances[0].connects, ["FAKE:CLAWSTICK"]);
+  });
+
+  it("stops the hardware adapter before permission cleanup during app quit", () => {
+    const source = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
+    const start = source.indexOf('app.on("before-quit"');
+    const end = source.indexOf('app.on("window-all-closed"', start);
+    const block = source.slice(start, end);
+    const hardwareStop = block.indexOf("hardwareBuddyAdapter.stop()");
+    const permissionCleanup = block.indexOf("_perm.cleanup()");
+
+    assert.ok(hardwareStop !== -1, "before-quit should stop hardware buddy");
+    assert.ok(permissionCleanup !== -1, "before-quit should clean permission runtime");
+    assert.ok(hardwareStop < permissionCleanup, "hardware buddy must stop before permission cleanup");
   });
 });
