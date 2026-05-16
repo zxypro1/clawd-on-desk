@@ -616,6 +616,20 @@ function notifyPermissionsChanged(reason) {
   }
 }
 
+function addPendingPermission(permEntry, reason = "added") {
+  pendingPermissions.push(permEntry);
+  notifyPermissionsChanged(reason);
+  return permEntry;
+}
+
+function removePendingPermission(permEntry, reason = "removed") {
+  const idx = pendingPermissions.indexOf(permEntry);
+  if (idx === -1) return false;
+  pendingPermissions.splice(idx, 1);
+  notifyPermissionsChanged(reason);
+  return true;
+}
+
 // Called by settings-effect-router after permissionBubbleAutoCloseSeconds
 // changes. Re-arm every visible permission entry against the current policy
 // so a freshly-raised value extends pending bubbles and a lowered value
@@ -1182,7 +1196,7 @@ function showCodexNotifyBubble({ sessionId, command }) {
     agentId: "codex",
     autoExpireTimer: null,
   };
-  pendingPermissions.push(permEntry);
+  addPendingPermission(permEntry, "passive-added");
   showPermissionBubble(permEntry);
   permLog(`passive notify show: agent=codex session=${sessionId} autoCloseMs=${policy.autoCloseMs}`);
   schedulePassiveNotifyAutoExpire(permEntry, policy.autoCloseMs);
@@ -1206,7 +1220,7 @@ function showKimiNotifyBubble({ sessionId, command }) {
     agentId: "kimi-cli",
     autoExpireTimer: null,
   };
-  pendingPermissions.push(permEntry);
+  addPendingPermission(permEntry, "passive-added");
   showPermissionBubble(permEntry);
   permLog(`passive notify show: agent=kimi-cli session=${sessionId} autoCloseMs=${policy.autoCloseMs}`);
   schedulePassiveNotifyAutoExpire(permEntry, policy.autoCloseMs);
@@ -1403,6 +1417,7 @@ return {
   showPermissionBubble, resolvePermissionEntry,
   sendPermissionResponse, repositionBubbles, permLog,
   pendingPermissions, PASSTHROUGH_TOOLS,
+  addPendingPermission, removePendingPermission,
   maybeStartRemoteApproval,
   dismissPermissionForTerminal,
   handleBubbleHeight, handleDecide, cleanup,

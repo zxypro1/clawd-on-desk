@@ -138,6 +138,19 @@ describe("permission autoclose: no-decision dismiss semantics", () => {
     assert.equal(pendingPermissions.indexOf(permEntry), -1);
   });
 
+  it("notifies when a permission enters the pending list through the runtime helper", () => {
+    const changes = [];
+    const perm = initPermission(makeCtx({
+      onPermissionsChanged: (reason) => changes.push(reason),
+    }));
+    const permEntry = makePermEntry();
+
+    assert.strictEqual(perm.addPendingPermission(permEntry), permEntry);
+
+    assert.deepEqual(changes, ["added"]);
+    assert.deepEqual(perm.pendingPermissions, [permEntry]);
+  });
+
   it("Codex branch sends 204 no-decision instead of allow/deny", () => {
     const ctx = makeCtx();
     const { resolvePermissionEntry, pendingPermissions } = initPermission(ctx);
