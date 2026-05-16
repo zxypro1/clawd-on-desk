@@ -168,6 +168,7 @@ function createHardwareBuddyAdapter(options = {}) {
       },
       onError: (err) => log(`sidecar error: ${err && err.message ? err.message : err}`),
       onTransportStateChanged: () => {
+        // Link security/connectivity changes must retract or restore prompt fields immediately.
         if (controller && typeof controller.notifyStateChanged === "function") {
           controller.notifyStateChanged();
         }
