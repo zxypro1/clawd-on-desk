@@ -59,6 +59,9 @@ function buildSidecarArgs(options) {
   if (env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX) {
     args.push("--name-prefix", env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX);
   }
+  if (/^(true|false)$/i.test(String(env.CLAWD_HARDWARE_BUDDY_FAKE_SECURE || "").trim())) {
+    args.push("--fake-secure", String(env.CLAWD_HARDWARE_BUDDY_FAKE_SECURE).trim().toLowerCase());
+  }
   return args;
 }
 

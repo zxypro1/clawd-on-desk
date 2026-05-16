@@ -467,6 +467,27 @@ describe("hardware buddy adapter", () => {
     assert.deepStrictEqual(FakeSidecarClient.instances[0].connects, ["FAKE:CLAWSTICK"]);
   });
 
+  it("passes the fake secure setting through to the sidecar", () => {
+    resetFakes();
+    const adapter = createHardwareBuddyAdapter({
+      env: {
+        CLAWD_HARDWARE_BUDDY: "1",
+        CLAWD_HARDWARE_BUDDY_BACKEND: "fake",
+        CLAWD_HARDWARE_BUDDY_FAKE_SECURE: "false",
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+    });
+
+    adapter.start();
+    assert.deepStrictEqual(
+      FakeSidecarClient.instances[0].options.args.slice(-2),
+      ["--fake-secure", "false"]
+    );
+  });
+
   it("stops the hardware adapter before permission cleanup during app quit", () => {
     const source = fs.readFileSync(path.join(__dirname, "..", "src", "main.js"), "utf8");
     const start = source.indexOf('app.on("before-quit"');
