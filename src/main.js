@@ -2151,8 +2151,8 @@ if (!gotTheLock) {
     _perm.cleanup();
     _server.cleanup();
     _updateBubble.cleanup();
-    _state.cleanup();
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
+    _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();
     _sessionHud.cleanup();

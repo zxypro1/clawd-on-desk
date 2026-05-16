@@ -82,23 +82,62 @@ function createHardwareBuddyAdapter(options = {}) {
   const autoConnectAddress = options.autoConnectAddress || env.CLAWD_HARDWARE_BUDDY_ADDRESS || "";
   const keepaliveMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_KEEPALIVE_MS, 10000);
   const autoConnectDelayMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_DELAY_MS, 1000);
+  const notifyDebounceMs = options.notifyDebounceMs != null
+    ? numberFromEnv(options.notifyDebounceMs, 50)
+    : numberFromEnv(env.CLAWD_HARDWARE_BUDDY_NOTIFY_DEBOUNCE_MS, 50);
+  const setTimer = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
+  const clearTimer = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
 
   let controller = null;
   let sidecar = null;
   let started = false;
   let autoConnectTimer = null;
+  let stateNotifyTimer = null;
   let lastStatus = null;
   let lastDevices = [];
 
   function clearAutoConnectTimer() {
-    if (autoConnectTimer) clearTimeout(autoConnectTimer);
+    if (autoConnectTimer) clearTimer(autoConnectTimer);
     autoConnectTimer = null;
+  }
+
+  function clearStateNotifyTimer() {
+    if (stateNotifyTimer) clearTimer(stateNotifyTimer);
+    stateNotifyTimer = null;
   }
 
   function getPendingPermissions() {
     if (!permissionsEnabled) return [];
     if (typeof options.getPendingPermissions !== "function") return [];
     return callSafely(() => options.getPendingPermissions(), log) || [];
+  }
+
+  function emitStateChange() {
+    stateNotifyTimer = null;
+    if (!started || !controller || typeof controller.notifyStateChanged !== "function") return null;
+    return controller.notifyStateChanged();
+  }
+
+  function cleanupStartedParts() {
+    clearAutoConnectTimer();
+    clearStateNotifyTimer();
+    if (controller && typeof controller.stop === "function") {
+      try {
+        controller.stop();
+      } catch (err) {
+        log(`controller stop failed: ${err && err.message ? err.message : err}`);
+      }
+    }
+    if (sidecar && typeof sidecar.stop === "function") {
+      try {
+        sidecar.stop();
+      } catch (err) {
+        log(`sidecar stop failed: ${err && err.message ? err.message : err}`);
+      }
+    }
+    controller = null;
+    sidecar = null;
+    started = false;
   }
 
   function start() {
@@ -112,6 +151,9 @@ function createHardwareBuddyAdapter(options = {}) {
     const SidecarClient = options.SidecarClient || modules.SidecarClient;
     if (typeof HardwareBuddyController !== "function" || typeof SidecarClient !== "function") {
       throw new Error("Hardware Buddy core modules are unavailable");
+    }
+    if (permissionsEnabled && typeof options.resolvePermissionEntry !== "function") {
+      log("permissions requested but resolvePermissionEntry is unavailable; hardware permission replies will be ignored");
     }
 
     sidecar = new SidecarClient({
@@ -139,19 +181,26 @@ function createHardwareBuddyAdapter(options = {}) {
       getDoNotDisturb: () => !!callSafely(options.getDoNotDisturb || (() => false), log),
       isAgentEnabled: options.isAgentEnabled,
       isAgentPermissionsEnabled: options.isAgentPermissionsEnabled,
-      resolvePermissionEntry: permissionsEnabled ? options.resolvePermissionEntry : null,
+      resolvePermissionEntry: permissionsEnabled && typeof options.resolvePermissionEntry === "function"
+        ? options.resolvePermissionEntry
+        : null,
       statePriority: options.statePriority,
       keepaliveMs,
       log: (message) => log(`controller: ${message}`),
     });
 
-    sidecar.start();
-    controller.start();
-    started = true;
+    try {
+      sidecar.start();
+      controller.start();
+      started = true;
+    } catch (err) {
+      cleanupStartedParts();
+      throw err;
+    }
     log(`started backend=${env.CLAWD_HARDWARE_BUDDY_BACKEND || "bleak"} permissions=${permissionsEnabled ? "on" : "off"}`);
 
     if (autoConnectAddress) {
-      autoConnectTimer = setTimeout(() => {
+      autoConnectTimer = setTimer(() => {
         if (!started || !sidecar) return;
         sidecar.connect(autoConnectAddress);
       }, autoConnectDelayMs);
@@ -160,17 +209,17 @@ function createHardwareBuddyAdapter(options = {}) {
   }
 
   function stop() {
-    clearAutoConnectTimer();
-    if (controller && typeof controller.stop === "function") controller.stop();
-    if (sidecar && typeof sidecar.stop === "function") sidecar.stop();
-    controller = null;
-    sidecar = null;
-    started = false;
+    cleanupStartedParts();
   }
 
   function notifyStateChanged() {
     if (!started || !controller || typeof controller.notifyStateChanged !== "function") return null;
-    return controller.notifyStateChanged();
+    if (notifyDebounceMs <= 0) return emitStateChange();
+    if (stateNotifyTimer) return true;
+    stateNotifyTimer = setTimer(() => {
+      emitStateChange();
+    }, notifyDebounceMs);
+    return true;
   }
 
   function notifyPermissionsChanged() {

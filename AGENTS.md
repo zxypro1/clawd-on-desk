@@ -129,6 +129,7 @@ Copilot CLI 是唯一在本地启动时不会自动同步 hooks 的受支持 age
 - opencode 权限不走 `permission.ask` hook，而是 event hook + reverse bridge
 - Pi 通过 `~/.pi/agent/extensions/clawd-on-desk` 的 global extension 推送状态；权限气泡第一版只覆盖 `bash` / `write` / `edit`，不可用时必须回退到 Pi terminal confirmation
 - OpenClaw 通过 `~/.openclaw/openclaw.json` plugin 路径做 state-only 集成；Phase 1 不做 permission bubble / terminal focus，主要支持本地 `openclaw tui --local`
+- Hardware Buddy / Clawstick adapter work currently lives on branch `hardware-buddy-state-adapter`. It is env-gated and state-only by default: set `CLAWD_HARDWARE_BUDDY=1` or `CLAWD_HARDWARE_BUDDY_ADDRESS=<device>` to enable it, use `CLAWD_HARDWARE_BUDDY_ROOT` when the sibling `../ClaudeBuddy` checkout is not the bridge-core repo, and do not enable permission replies without an explicit secure-link review.
 - HTTP 服务端口范围固定为 `127.0.0.1:23333-23337`；运行时端口写入 `~/.clawd/runtime.json`
 - Remote SSH 的远端 Node 探测要求 Node >= 14；`scripts/remote-deploy.sh` 与 `src/remote-ssh-node.js` 的 probe 顺序、候选路径、版本判断和输出字段必须保持行为对齐
 - 注册 Claude Code hook 时只能追加，不能覆盖用户已有 hook 数组
