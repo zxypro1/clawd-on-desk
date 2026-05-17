@@ -496,7 +496,12 @@ function createHardwareBuddyAdapter(options = {}) {
       cleanupStartedParts({ keepConfig: true });
       return start();
     }
-    if (permissionChanged) notifyPermissionsChanged();
+    if (permissionChanged) {
+      // The bridge-core controller captures resolvePermissionEntry at construction
+      // time, so permission opt-in changes need a fresh controller.
+      cleanupStartedParts({ keepConfig: true });
+      return start();
+    }
     publishStatus();
     return true;
   }

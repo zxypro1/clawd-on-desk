@@ -524,6 +524,61 @@ describe("hardware buddy adapter", () => {
     assert.deepStrictEqual(sidecar.connects, [{ address: "00:4B:12:A1:9E:A6" }]);
   });
 
+  it("restarts the controller when permission opt-in changes so replies can resolve", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const pending = [{ toolName: "Bash" }];
+    const resolved = [];
+    const baseSettings = {
+      enabled: true,
+      backend: "fake",
+      address: "",
+      namePrefix: "Claude",
+      permissionsEnabled: false,
+    };
+    const adapter = createHardwareBuddyAdapter({
+      settings: baseSettings,
+      coreModules: {
+        HardwareBuddyController: PromptingHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      getPendingPermissions: () => pending,
+      resolvePermissionEntry: (entry, behavior) => resolved.push({ entry, behavior }),
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    assert.strictEqual(adapter.start(), true);
+    const firstController = PromptingHardwareBuddyController.instances[0];
+    const firstSidecar = FakeSidecarClient.instances[0];
+    assert.strictEqual(firstController.options.resolvePermissionEntry, null);
+
+    firstSidecar.setSecure(true);
+    adapter.notifyPermissionsChanged();
+    assert.strictEqual(firstSidecar.lastSent().snapshot.prompt, undefined);
+
+    assert.strictEqual(adapter.applySettingsChange({
+      ...baseSettings,
+      permissionsEnabled: true,
+    }), true);
+
+    assert.strictEqual(firstController.stopped, true);
+    assert.strictEqual(firstSidecar.stopped, true);
+    assert.strictEqual(PromptingHardwareBuddyController.instances.length, 2);
+    assert.strictEqual(FakeSidecarClient.instances.length, 2);
+
+    const secondController = PromptingHardwareBuddyController.instances[1];
+    const secondSidecar = FakeSidecarClient.instances[1];
+    assert.strictEqual(typeof secondController.options.resolvePermissionEntry, "function");
+
+    secondSidecar.setSecure(true);
+    adapter.notifyPermissionsChanged();
+    assert.strictEqual(secondSidecar.lastSent().snapshot.prompt.tool, "Bash");
+
+    secondSidecar.injectCommand({ cmd: "permission", id: "hb_1", decision: "once" });
+    assert.deepStrictEqual(resolved, [{ entry: pending[0], behavior: "allow" }]);
+  });
+
   it("retries auto-connect after a connection error", () => {
     resetFakes();
     const fakeTimers = createFakeTimers();
