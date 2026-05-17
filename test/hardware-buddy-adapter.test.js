@@ -66,21 +66,31 @@ class FakeSidecarClient {
   }
 
   setSecure(secure) {
+    const previous = {
+      connected: this.transport.connected === true,
+      secure: this.transport.secure === true,
+    };
     this.transport.secure = secure === true;
     if (typeof this.options.onTransportStateChanged === "function") {
       this.options.onTransportStateChanged({
         connected: this.transport.connected === true,
         secure: this.transport.secure === true,
+        previous,
       });
     }
   }
 
   setConnected(connected) {
+    const previous = {
+      connected: this.transport.connected === true,
+      secure: this.transport.secure === true,
+    };
     this.transport.connected = connected === true;
     if (typeof this.options.onTransportStateChanged === "function") {
       this.options.onTransportStateChanged({
         connected: this.transport.connected === true,
         secure: this.transport.secure === true,
+        previous,
       });
     }
   }
@@ -97,6 +107,17 @@ class ThrowingSidecarClient extends FakeSidecarClient {
     throw new Error("spawn failed");
   }
 }
+
+class ThrowsOnRestartSidecarClient extends FakeSidecarClient {
+  start() {
+    this.started = true;
+    ThrowsOnRestartSidecarClient.starts += 1;
+    if (ThrowsOnRestartSidecarClient.starts > 1) {
+      throw new Error("restart spawn failed");
+    }
+  }
+}
+ThrowsOnRestartSidecarClient.starts = 0;
 
 class FakeHardwareBuddyController {
   constructor(options) {
@@ -222,6 +243,7 @@ function resetFakes() {
   FakeSidecarClient.instances.length = 0;
   FakeHardwareBuddyController.instances.length = 0;
   PromptingHardwareBuddyController.instances.length = 0;
+  ThrowsOnRestartSidecarClient.starts = 0;
 }
 
 function createFakeTimers() {
@@ -459,12 +481,18 @@ describe("hardware buddy adapter", () => {
 
   it("cleans up partial startup state when sidecar start throws", () => {
     resetFakes();
+    const fakeTimers = createFakeTimers();
     const adapter = createHardwareBuddyAdapter({
-      env: { CLAWD_HARDWARE_BUDDY: "1" },
+      env: {
+        CLAWD_HARDWARE_BUDDY: "1",
+        CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS: "25",
+      },
       coreModules: {
         HardwareBuddyController: FakeHardwareBuddyController,
         SidecarClient: ThrowingSidecarClient,
       },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
     });
 
     assert.throws(() => adapter.start(), /spawn failed/);
@@ -473,6 +501,8 @@ describe("hardware buddy adapter", () => {
     assert.strictEqual(adapter.getController(), null);
     assert.strictEqual(FakeSidecarClient.instances[0].stopped, true);
     assert.strictEqual(FakeHardwareBuddyController.instances[0].stopped, true);
+    assert.strictEqual(adapter.getStatus().lastError.category, "sidecar_error");
+    assert.ok(fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25));
   });
 
   it("auto-connects when an address is configured", async () => {
@@ -618,6 +648,119 @@ describe("hardware buddy adapter", () => {
     assert.ok(secondRetry);
     sidecar.setConnected(true);
     assert.strictEqual(secondRetry.cleared, true);
+  });
+
+  it("does not inflate retry attempts for repeated non-matching scan results while retry is pending", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const adapter = createHardwareBuddyAdapter({
+      settings: {
+        enabled: true,
+        backend: "fake",
+        address: "",
+        namePrefix: "Claude",
+        permissionsEnabled: false,
+      },
+      env: {
+        CLAWD_HARDWARE_BUDDY_CONNECT_DELAY_MS: "10",
+        CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS: "25",
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    adapter.start();
+    fakeTimers.timers[0].fn();
+
+    const sidecar = FakeSidecarClient.instances[0];
+    sidecar.emitDevices([{ name: "Other-1", address: "11" }]);
+    const firstStatus = adapter.getStatus();
+    assert.strictEqual(firstStatus.lastError.category, "device_not_found");
+    assert.strictEqual(firstStatus.retryAttempt, 1);
+    const retryTimer = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25);
+    assert.ok(retryTimer);
+
+    sidecar.emitDevices([{ name: "Other-2", address: "22" }]);
+    const secondStatus = adapter.getStatus();
+    assert.strictEqual(secondStatus.retryAttempt, 1);
+    assert.strictEqual(
+      fakeTimers.timers.filter((timer) => !timer.cleared && timer.ms === 25).length,
+      1
+    );
+
+    sidecar.emitDevices([{ name: "Claude-9EA6", address: "00:4B:12:A1:9E:A6" }]);
+    assert.deepStrictEqual(sidecar.connects, [{ address: "00:4B:12:A1:9E:A6" }]);
+    assert.strictEqual(retryTimer.cleared, true);
+    assert.strictEqual(adapter.getStatus().retryAttempt, 0);
+    assert.strictEqual(adapter.getStatus().lastError, null);
+  });
+
+  it("records transport disconnects as retryable status and backs off reconnects", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const adapter = createHardwareBuddyAdapter({
+      env: {
+        CLAWD_HARDWARE_BUDDY: "1",
+        CLAWD_HARDWARE_BUDDY_BACKEND: "fake",
+        CLAWD_HARDWARE_BUDDY_ADDRESS: "FAKE:CLAWSTICK",
+        CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS: "25",
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    adapter.start();
+    const sidecar = FakeSidecarClient.instances[0];
+    sidecar.setConnected(true);
+    sidecar.setConnected(false);
+
+    const status = adapter.getStatus();
+    assert.strictEqual(status.lastError.category, "transport_disconnected");
+    assert.strictEqual(status.retryAttempt, 1);
+    const retryTimer = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25);
+    assert.ok(retryTimer);
+
+    retryTimer.fn();
+    assert.deepStrictEqual(sidecar.connects, ["FAKE:CLAWSTICK"]);
+  });
+
+  it("catches restart timer failures and schedules another restart", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const adapter = createHardwareBuddyAdapter({
+      env: {
+        CLAWD_HARDWARE_BUDDY: "1",
+        CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS: "25",
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: ThrowsOnRestartSidecarClient,
+      },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    adapter.start();
+    const sidecar = FakeSidecarClient.instances[0];
+    sidecar.options.log("warn", "sidecar exited: code=1 signal=");
+    const restartTimer = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25);
+    assert.ok(restartTimer);
+
+    assert.doesNotThrow(() => restartTimer.fn());
+
+    const status = adapter.getStatus();
+    assert.strictEqual(status.lastError.category, "sidecar_error");
+    assert.strictEqual(status.retryAttempt, 2);
+    const nextRestart = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 50);
+    assert.ok(nextRestart);
   });
 
   it("classifies missing bleak as non-retryable", () => {

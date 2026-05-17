@@ -142,6 +142,15 @@ function classifyHardwareBuddyIssue(err) {
       hint: "Make sure Bluetooth is on and the device is advertising.",
     };
   }
+  if (code === "DISCONNECTED") {
+    return {
+      code,
+      category: "transport_disconnected",
+      retryable: true,
+      message: message || "transport disconnected",
+      hint: "Check Bluetooth and keep the device powered on.",
+    };
+  }
   if (code === "ENOENT" || lower.includes("spawn") && lower.includes("enoent")) {
     return {
       code: code || "ENOENT",
@@ -273,23 +282,36 @@ function createHardwareBuddyAdapter(options = {}) {
     autoConnectTimer = setTimer(() => {
       autoConnectTimer = null;
       if (!started || !sidecar || isSidecarConnected()) return;
-      if (activeConfig.address) {
-        sidecar.connect(activeConfig.address);
-      } else if (typeof sidecar.scan === "function") {
-        sidecar.scan();
+      try {
+        if (activeConfig.address) {
+          sidecar.connect(activeConfig.address);
+        } else if (typeof sidecar.scan === "function") {
+          sidecar.scan();
+        } else {
+          handleIssue({ code: "BAD_CONTROL", message: "Hardware Buddy sidecar does not support scan" });
+        }
+        publishStatus();
+      } catch (err) {
+        handleIssue(err);
       }
-      publishStatus();
     }, delayMs);
     publishStatus({ nextRetryAt: now() + delayMs, retryDelayMs: delayMs });
   }
 
   function scheduleRestart(delayMs) {
-    if (restartTimer || !started || activeConfig.enabled !== true) return;
+    if (restartTimer || activeConfig.enabled !== true) return;
     restartTimer = setTimer(() => {
       restartTimer = null;
       if (!activeConfig.enabled) return;
-      cleanupStartedParts({ keepConfig: true });
-      start();
+      try {
+        cleanupStartedParts({ keepConfig: true });
+        start();
+      } catch (err) {
+        // start() records retryable startup failures and schedules the next
+        // restart. The timer callback must never surface an uncaught exception
+        // into Electron's main process.
+        throttledLog("restart:failed", `restart failed: ${err && err.message ? err.message : err}`, err);
+      }
     }, delayMs);
     publishStatus({ nextRetryAt: now() + delayMs, retryDelayMs: delayMs });
   }
@@ -363,10 +385,14 @@ function createHardwareBuddyAdapter(options = {}) {
       return typeof item.name === "string" && item.name.startsWith(prefix);
     });
     if (!match) {
-      handleIssue({ code: "NO_DEVICE", message: "device not found" });
+      if (!autoConnectTimer) {
+        handleIssue({ code: "NO_DEVICE", message: "device not found" });
+      }
       return false;
     }
     retryAttempt = 0;
+    lastError = null;
+    clearAutoConnectTimer();
     if (match.address) return sidecar.connect({ address: match.address });
     if (match.id) return sidecar.connect({ id: match.id });
     return sidecar.connect({ name: match.name });
@@ -401,8 +427,8 @@ function createHardwareBuddyAdapter(options = {}) {
           retryAttempt = 0;
           clearAutoConnectTimer();
           lastError = null;
-        } else {
-          scheduleAutoConnect(autoConnectRetryMs);
+        } else if (!restartTimer && state && state.previous && state.previous.connected === true) {
+          handleIssue({ code: "DISCONNECTED", message: "transport disconnected" });
         }
         publishStatus();
         // Link security/connectivity changes must retract or restore prompt fields immediately.
@@ -421,42 +447,40 @@ function createHardwareBuddyAdapter(options = {}) {
       return false;
     }
 
-    const modules = options.coreModules || loadCoreModules(coreRoot);
-    const HardwareBuddyController = options.HardwareBuddyController || modules.HardwareBuddyController;
-    const SidecarClient = options.SidecarClient || modules.SidecarClient;
-    if (typeof HardwareBuddyController !== "function" || typeof SidecarClient !== "function") {
-      const err = new Error("Hardware Buddy core modules are unavailable");
-      handleIssue(err);
-      throw err;
-    }
-    if (activeConfig.permissionsEnabled && typeof options.resolvePermissionEntry !== "function") {
-      log("permissions requested but resolvePermissionEntry is unavailable; hardware permission replies will be ignored");
-    }
-
-    sidecar = createSidecar(SidecarClient);
-
-    controller = new HardwareBuddyController({
-      transport: sidecar.transport,
-      getSessionSnapshot: () => callSafely(options.getSessionSnapshot || (() => ({ sessions: [] })), log) || { sessions: [] },
-      getPendingPermissions,
-      getDoNotDisturb: () => !!callSafely(options.getDoNotDisturb || (() => false), log),
-      isAgentEnabled: options.isAgentEnabled,
-      isAgentPermissionsEnabled: options.isAgentPermissionsEnabled,
-      resolvePermissionEntry: activeConfig.permissionsEnabled && typeof options.resolvePermissionEntry === "function"
-        ? options.resolvePermissionEntry
-        : null,
-      statePriority: options.statePriority,
-      keepaliveMs,
-      log: (message) => log(`controller: ${message}`),
-    });
-
     try {
+      const modules = options.coreModules || loadCoreModules(coreRoot);
+      const HardwareBuddyController = options.HardwareBuddyController || modules.HardwareBuddyController;
+      const SidecarClient = options.SidecarClient || modules.SidecarClient;
+      if (typeof HardwareBuddyController !== "function" || typeof SidecarClient !== "function") {
+        throw new Error("Hardware Buddy core modules are unavailable");
+      }
+      if (activeConfig.permissionsEnabled && typeof options.resolvePermissionEntry !== "function") {
+        log("permissions requested but resolvePermissionEntry is unavailable; hardware permission replies will be ignored");
+      }
+
+      sidecar = createSidecar(SidecarClient);
+
+      controller = new HardwareBuddyController({
+        transport: sidecar.transport,
+        getSessionSnapshot: () => callSafely(options.getSessionSnapshot || (() => ({ sessions: [] })), log) || { sessions: [] },
+        getPendingPermissions,
+        getDoNotDisturb: () => !!callSafely(options.getDoNotDisturb || (() => false), log),
+        isAgentEnabled: options.isAgentEnabled,
+        isAgentPermissionsEnabled: options.isAgentPermissionsEnabled,
+        resolvePermissionEntry: activeConfig.permissionsEnabled && typeof options.resolvePermissionEntry === "function"
+          ? options.resolvePermissionEntry
+          : null,
+        statePriority: options.statePriority,
+        keepaliveMs,
+        log: (message) => log(`controller: ${message}`),
+      });
+
       sidecar.start();
       controller.start();
       started = true;
     } catch (err) {
-      cleanupStartedParts();
-      handleIssue(err);
+      cleanupStartedParts({ keepConfig: true });
+      handleIssue(err, { restart: true });
       throw err;
     }
     log(`started backend=${activeConfig.backend} permissions=${activeConfig.permissionsEnabled ? "on" : "off"}`);
