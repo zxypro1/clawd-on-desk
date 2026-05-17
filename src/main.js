@@ -181,6 +181,7 @@ let telegramApprovalConfigSignature = "";
 let telegramApprovalTokenRevision = 0;
 let hardwareBuddyAdapter = null;
 let hardwareBuddyStatus = null;
+let lastHardwareBuddyStatusLogKey = "";
 let unsubscribeHardwareBuddySettings = null;
 const shortcutHandlers = {
   togglePet: () => togglePetVisibility(),
@@ -1462,8 +1463,37 @@ function hardwareBuddyLog(msg) {
   }
 }
 
+function summarizeHardwareBuddyStatus(status) {
+  const lastError = status && status.lastError && typeof status.lastError === "object"
+    ? status.lastError
+    : null;
+  return {
+    enabled: !!(status && status.enabled),
+    started: !!(status && status.started),
+    sidecarRunning: !!(status && status.sidecarRunning),
+    permissionsEnabled: !!(status && status.permissionsEnabled),
+    connected: !!(status && status.connected),
+    secure: !!(status && status.secure),
+    error: lastError ? `${lastError.category || "unknown"}:${lastError.code || ""}` : "",
+    retryAttempt: status && Number.isFinite(status.retryAttempt) ? status.retryAttempt : 0,
+  };
+}
+
+function logHardwareBuddyStatus(status) {
+  const summary = summarizeHardwareBuddyStatus(status);
+  const key = JSON.stringify(summary);
+  if (key === lastHardwareBuddyStatusLogKey) return;
+  lastHardwareBuddyStatusLogKey = key;
+  hardwareBuddyLog(
+    `status enabled=${summary.enabled} started=${summary.started} sidecar=${summary.sidecarRunning}`
+      + ` permissions=${summary.permissionsEnabled} connected=${summary.connected} secure=${summary.secure}`
+      + ` retry=${summary.retryAttempt}${summary.error ? ` error=${summary.error}` : ""}`
+  );
+}
+
 function broadcastHardwareBuddyStatus(status) {
   hardwareBuddyStatus = status || null;
+  logHardwareBuddyStatus(hardwareBuddyStatus);
   try {
     for (const bw of BrowserWindow.getAllWindows()) {
       if (!bw.isDestroyed() && bw.webContents && !bw.webContents.isDestroyed()) {
