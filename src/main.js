@@ -180,6 +180,8 @@ let telegramApprovalSyncPromise = Promise.resolve();
 let telegramApprovalConfigSignature = "";
 let telegramApprovalTokenRevision = 0;
 let hardwareBuddyAdapter = null;
+let hardwareBuddyStatus = null;
+let unsubscribeHardwareBuddySettings = null;
 const shortcutHandlers = {
   togglePet: () => togglePetVisibility(),
 };
@@ -1460,8 +1462,22 @@ function hardwareBuddyLog(msg) {
   }
 }
 
+function broadcastHardwareBuddyStatus(status) {
+  hardwareBuddyStatus = status || null;
+  try {
+    for (const bw of BrowserWindow.getAllWindows()) {
+      if (!bw.isDestroyed() && bw.webContents && !bw.webContents.isDestroyed()) {
+        bw.webContents.send("hardwareBuddy:status-changed", hardwareBuddyStatus);
+      }
+    }
+  } catch (err) {
+    console.warn("Clawd: Hardware Buddy status broadcast failed:", err && err.message);
+  }
+}
+
 hardwareBuddyAdapter = createHardwareBuddyAdapter({
   env: process.env,
+  getSettings: () => _settingsController.get("hardwareBuddy"),
   getSessionSnapshot: () => _state.buildSessionSnapshot(),
   getPendingPermissions: () => pendingPermissions,
   getDoNotDisturb: () => doNotDisturb,
@@ -1471,6 +1487,17 @@ hardwareBuddyAdapter = createHardwareBuddyAdapter({
   resolvePermissionEntry: (...args) => resolvePermissionEntry(...args),
   statePriority: _state.STATE_PRIORITY,
   log: hardwareBuddyLog,
+  onStatusChanged: broadcastHardwareBuddyStatus,
+});
+
+unsubscribeHardwareBuddySettings = _settingsController.subscribeKey("hardwareBuddy", () => {
+  if (!hardwareBuddyAdapter || typeof hardwareBuddyAdapter.applySettingsChange !== "function") return;
+  try {
+    hardwareBuddyAdapter.applySettingsChange();
+  } catch (err) {
+    console.warn("Clawd: failed to apply Hardware Buddy settings:", err && err.message);
+    hardwareBuddyLog(`settings apply failed: ${err && err.message ? err.message : err}`);
+  }
 });
 
 // ── Menu — delegated to src/menu.js ──
@@ -1748,6 +1775,9 @@ registerSettingsIpc({
   getSoundMuted: () => soundMuted,
   getSoundVolume: () => soundVolume,
   getAllAgents,
+  getHardwareBuddyStatus: () => hardwareBuddyStatus || (hardwareBuddyAdapter && hardwareBuddyAdapter.getStatus
+    ? hardwareBuddyAdapter.getStatus()
+    : null),
   checkForUpdates,
   aboutHeroSvgPath: path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg"),
 });
@@ -2153,6 +2183,10 @@ if (!gotTheLock) {
     globalShortcut.unregisterAll();
     void settingsSizePreviewSession.cleanup();
     stopTelegramApprovalSidecar();
+    if (typeof unsubscribeHardwareBuddySettings === "function") {
+      unsubscribeHardwareBuddySettings();
+      unsubscribeHardwareBuddySettings = null;
+    }
     if (hardwareBuddyAdapter) hardwareBuddyAdapter.stop();
     _perm.cleanup();
     _server.cleanup();

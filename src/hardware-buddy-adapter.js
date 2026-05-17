@@ -1,6 +1,10 @@
 "use strict";
 
 const path = require("path");
+const {
+  normalizeHardwareBuddySettings,
+  hardwareBuddySettingsEqual,
+} = require("./hardware-buddy-settings");
 
 function truthy(value) {
   if (value === true) return true;
@@ -40,15 +44,47 @@ function defaultSidecarScript(coreRoot, env = process.env) {
     || path.join(coreRoot, "tools", "hardware_buddy_bridge.py");
 }
 
+function readSettings(options) {
+  if (typeof options.getSettings === "function") return options.getSettings() || {};
+  if (options.settings && typeof options.settings === "object") return options.settings;
+  return null;
+}
+
+function readRuntimeConfig(options, env = process.env) {
+  const settings = readSettings(options);
+  const hasSettings = settings !== null;
+  const config = normalizeHardwareBuddySettings(settings || {});
+  if (!hasSettings) config.enabled = isEnabledFromEnv(env);
+
+  if (truthy(env.CLAWD_HARDWARE_BUDDY_DISABLED)) config.enabled = false;
+  else if (options.enabled != null) config.enabled = !!options.enabled;
+  else if (truthy(env.CLAWD_HARDWARE_BUDDY)) config.enabled = true;
+
+  if (options.permissionsEnabled != null) config.permissionsEnabled = !!options.permissionsEnabled;
+  else if (truthy(env.CLAWD_HARDWARE_BUDDY_PERMISSIONS)) config.permissionsEnabled = true;
+
+  if (env.CLAWD_HARDWARE_BUDDY_BACKEND) config.backend = env.CLAWD_HARDWARE_BUDDY_BACKEND;
+  if (env.CLAWD_HARDWARE_BUDDY_ADDRESS) config.address = String(env.CLAWD_HARDWARE_BUDDY_ADDRESS).trim();
+  if (env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX) config.namePrefix = String(env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX).trim();
+  if (options.autoConnectAddress) config.address = String(options.autoConnectAddress).trim();
+
+  config.backend = config.backend === "fake" ? "fake" : "bleak";
+  if (!config.namePrefix) config.namePrefix = "Claude";
+  config.autoConnectByNamePrefix = !config.address && (hasSettings || !!env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX);
+  return config;
+}
+
 function buildSidecarArgs(options) {
   const {
     env,
     coreRoot,
+    config,
   } = options;
+  const backend = config.backend || env.CLAWD_HARDWARE_BUDDY_BACKEND || "bleak";
   const args = [
     defaultSidecarScript(coreRoot, env),
     "--backend",
-    env.CLAWD_HARDWARE_BUDDY_BACKEND || "bleak",
+    backend,
   ];
   if (env.CLAWD_HARDWARE_BUDDY_SCAN_TIMEOUT) {
     args.push("--scan-timeout", String(env.CLAWD_HARDWARE_BUDDY_SCAN_TIMEOUT));
@@ -56,10 +92,10 @@ function buildSidecarArgs(options) {
   if (env.CLAWD_HARDWARE_BUDDY_CONNECT_TIMEOUT) {
     args.push("--connect-timeout", String(env.CLAWD_HARDWARE_BUDDY_CONNECT_TIMEOUT));
   }
-  if (env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX) {
-    args.push("--name-prefix", env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX);
+  if (config.namePrefix) {
+    args.push("--name-prefix", config.namePrefix);
   }
-  if ((env.CLAWD_HARDWARE_BUDDY_BACKEND || "bleak") === "fake"
+  if (backend === "fake"
     && /^(true|false)$/i.test(String(env.CLAWD_HARDWARE_BUDDY_FAKE_SECURE || "").trim())) {
     args.push("--fake-secure", String(env.CLAWD_HARDWARE_BUDDY_FAKE_SECURE).trim().toLowerCase());
   }
@@ -75,48 +111,206 @@ function callSafely(fn, log) {
   }
 }
 
+function classifyHardwareBuddyIssue(err) {
+  const code = String((err && err.code) || "").trim();
+  const message = String((err && err.message) || err || "").trim();
+  const lower = message.toLowerCase();
+  if (code === "MISSING_BLEAK") {
+    return {
+      code,
+      category: "missing_bleak",
+      retryable: false,
+      message: message || "Python bleak dependency is missing",
+      hint: "Install the Hardware Buddy sidecar requirements.",
+    };
+  }
+  if (code === "AUTH_REQUIRED") {
+    return {
+      code,
+      category: "auth_required",
+      retryable: true,
+      message: message || "BLE pairing is required",
+      hint: "Pair the device in Windows Bluetooth settings.",
+    };
+  }
+  if (code === "NO_DEVICE" || lower.includes("device not found")) {
+    return {
+      code: code || "NO_DEVICE",
+      category: "device_not_found",
+      retryable: true,
+      message: message || "device not found",
+      hint: "Make sure Bluetooth is on and the device is advertising.",
+    };
+  }
+  if (code === "ENOENT" || lower.includes("spawn") && lower.includes("enoent")) {
+    return {
+      code: code || "ENOENT",
+      category: "python_missing",
+      retryable: false,
+      message: message || "Python executable was not found",
+      hint: "Install Python or configure CLAWD_HARDWARE_BUDDY_PYTHON.",
+    };
+  }
+  if (code === "BAD_CONTROL" || code === "BAD_MESSAGE" || code === "BAD_SNAPSHOT") {
+    return {
+      code,
+      category: "bad_config",
+      retryable: false,
+      message,
+      hint: "Check the Hardware Buddy settings.",
+    };
+  }
+  if (code === "SIDECAR_EXIT") {
+    return {
+      code,
+      category: "sidecar_exited",
+      retryable: true,
+      message: message || "sidecar exited",
+      hint: "The sidecar process stopped unexpectedly.",
+    };
+  }
+  return {
+    code: code || "SIDECAR_ERROR",
+    category: "sidecar_error",
+    retryable: true,
+    message: message || "sidecar error",
+    hint: "Hardware Buddy sidecar reported an error.",
+  };
+}
+
 function createHardwareBuddyAdapter(options = {}) {
   const env = options.env || process.env;
   const log = typeof options.log === "function" ? options.log : () => {};
-  const enabled = options.enabled != null ? !!options.enabled : isEnabledFromEnv(env);
-  const permissionsEnabled = options.permissionsEnabled != null
-    ? !!options.permissionsEnabled
-    : truthy(env.CLAWD_HARDWARE_BUDDY_PERMISSIONS);
   const coreRoot = options.coreRoot || defaultCoreRoot(env);
-  const autoConnectAddress = options.autoConnectAddress || env.CLAWD_HARDWARE_BUDDY_ADDRESS || "";
   const keepaliveMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_KEEPALIVE_MS, 10000);
   const autoConnectDelayMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_DELAY_MS, 1000);
-  const autoConnectRetryMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS, 5000);
+  const autoConnectRetryMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MS, 15000);
+  const autoConnectRetryMaxMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_CONNECT_RETRY_MAX_MS, 120000);
   const notifyDebounceMs = options.notifyDebounceMs != null
     ? numberFromEnv(options.notifyDebounceMs, 50)
     : numberFromEnv(env.CLAWD_HARDWARE_BUDDY_NOTIFY_DEBOUNCE_MS, 50);
+  const logThrottleMs = numberFromEnv(env.CLAWD_HARDWARE_BUDDY_LOG_THROTTLE_MS, 60000);
   const setTimer = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
   const clearTimer = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
+  const now = typeof options.now === "function" ? options.now : () => Date.now();
+  const onStatusChanged = typeof options.onStatusChanged === "function"
+    ? options.onStatusChanged
+    : () => {};
 
   let controller = null;
   let sidecar = null;
   let started = false;
   let autoConnectTimer = null;
+  let restartTimer = null;
   let stateNotifyTimer = null;
   let lastStatus = null;
   let lastDevices = [];
+  let activeConfig = readRuntimeConfig(options, env);
+  let retryAttempt = 0;
+  let lastError = null;
+  let lastPublishedStatus = "";
+  const lastLogAt = new Map();
+
+  function publishStatus(extra = {}) {
+    const connected = !!(sidecar && sidecar.transport && sidecar.transport.connected === true);
+    const secure = !!(sidecar && sidecar.transport && sidecar.transport.secure === true);
+    const snapshot = {
+      enabled: activeConfig.enabled === true,
+      started,
+      sidecarRunning: !!(sidecar && sidecar.started),
+      backend: activeConfig.backend,
+      address: activeConfig.address,
+      namePrefix: activeConfig.namePrefix,
+      permissionsEnabled: activeConfig.permissionsEnabled === true,
+      connected,
+      secure,
+      lastStatus,
+      lastDevices: lastDevices.slice(),
+      lastError,
+      retryAttempt,
+      ...extra,
+    };
+    const encoded = JSON.stringify(snapshot);
+    if (encoded === lastPublishedStatus) return snapshot;
+    lastPublishedStatus = encoded;
+    onStatusChanged(snapshot);
+    return snapshot;
+  }
+
+  function throttledLog(key, message, meta) {
+    const ts = now();
+    const prev = lastLogAt.get(key) || 0;
+    if (ts - prev < logThrottleMs) return;
+    lastLogAt.set(key, ts);
+    log(message, meta);
+  }
 
   function clearAutoConnectTimer() {
     if (autoConnectTimer) clearTimer(autoConnectTimer);
     autoConnectTimer = null;
   }
 
+  function clearRestartTimer() {
+    if (restartTimer) clearTimer(restartTimer);
+    restartTimer = null;
+  }
+
   function isSidecarConnected() {
     return !!(sidecar && sidecar.transport && sidecar.transport.connected === true);
   }
 
+  function retryDelay(issue) {
+    if (!issue || !issue.retryable) return null;
+    if (issue.category === "auth_required") return Math.max(autoConnectRetryMs, 60000);
+    const attempt = Math.max(0, retryAttempt - 1);
+    const delay = autoConnectRetryMs * Math.pow(2, Math.min(attempt, 4));
+    return Math.max(autoConnectRetryMs, Math.min(delay, autoConnectRetryMaxMs));
+  }
+
   function scheduleAutoConnect(delayMs) {
-    if (!autoConnectAddress || autoConnectTimer || !started || !sidecar || isSidecarConnected()) return;
+    if (autoConnectTimer || !started || !sidecar || isSidecarConnected()) return;
+    if (!activeConfig.address && !activeConfig.autoConnectByNamePrefix) return;
     autoConnectTimer = setTimer(() => {
       autoConnectTimer = null;
       if (!started || !sidecar || isSidecarConnected()) return;
-      sidecar.connect(autoConnectAddress);
+      if (activeConfig.address) {
+        sidecar.connect(activeConfig.address);
+      } else if (typeof sidecar.scan === "function") {
+        sidecar.scan();
+      }
+      publishStatus();
     }, delayMs);
+    publishStatus({ nextRetryAt: now() + delayMs, retryDelayMs: delayMs });
+  }
+
+  function scheduleRestart(delayMs) {
+    if (restartTimer || !started || activeConfig.enabled !== true) return;
+    restartTimer = setTimer(() => {
+      restartTimer = null;
+      if (!activeConfig.enabled) return;
+      cleanupStartedParts({ keepConfig: true });
+      start();
+    }, delayMs);
+    publishStatus({ nextRetryAt: now() + delayMs, retryDelayMs: delayMs });
+  }
+
+  function handleIssue(err, { restart = false } = {}) {
+    const issue = classifyHardwareBuddyIssue(err);
+    retryAttempt += 1;
+    lastError = {
+      code: issue.code,
+      category: issue.category,
+      message: issue.message,
+      hint: issue.hint,
+      retryable: issue.retryable,
+      at: now(),
+    };
+    throttledLog(`issue:${issue.category}:${issue.code}`, `sidecar ${issue.category}: ${issue.message}`, err);
+    const delay = retryDelay(issue);
+    publishStatus({ retryDelayMs: delay || 0, nextRetryAt: delay ? now() + delay : null });
+    if (!delay) return;
+    if (restart) scheduleRestart(delay);
+    else scheduleAutoConnect(delay);
   }
 
   function clearStateNotifyTimer() {
@@ -125,7 +319,7 @@ function createHardwareBuddyAdapter(options = {}) {
   }
 
   function getPendingPermissions() {
-    if (!permissionsEnabled) return [];
+    if (activeConfig.permissionsEnabled !== true) return [];
     if (typeof options.getPendingPermissions !== "function") return [];
     return callSafely(() => options.getPendingPermissions(), log) || [];
   }
@@ -136,9 +330,12 @@ function createHardwareBuddyAdapter(options = {}) {
     return controller.notifyStateChanged();
   }
 
-  function cleanupStartedParts() {
+  function cleanupStartedParts({ keepConfig = false } = {}) {
     clearAutoConnectTimer();
+    clearRestartTimer();
     clearStateNotifyTimer();
+    if (!keepConfig) retryAttempt = 0;
+    started = false;
     if (controller && typeof controller.stop === "function") {
       try {
         controller.stop();
@@ -155,12 +352,72 @@ function createHardwareBuddyAdapter(options = {}) {
     }
     controller = null;
     sidecar = null;
-    started = false;
+    publishStatus();
+  }
+
+  function connectFirstMatchingDevice(items) {
+    if (!started || !sidecar || isSidecarConnected() || activeConfig.address || !activeConfig.autoConnectByNamePrefix) return false;
+    const prefix = activeConfig.namePrefix || "";
+    const match = (Array.isArray(items) ? items : []).find((item) => {
+      if (!prefix) return true;
+      return typeof item.name === "string" && item.name.startsWith(prefix);
+    });
+    if (!match) {
+      handleIssue({ code: "NO_DEVICE", message: "device not found" });
+      return false;
+    }
+    retryAttempt = 0;
+    if (match.address) return sidecar.connect({ address: match.address });
+    if (match.id) return sidecar.connect({ id: match.id });
+    return sidecar.connect({ name: match.name });
+  }
+
+  function createSidecar(SidecarClient) {
+    return new SidecarClient({
+      command: options.command || env.CLAWD_HARDWARE_BUDDY_PYTHON || "python",
+      args: options.args || buildSidecarArgs({ env, coreRoot, config: activeConfig }),
+      log: (level, message, meta) => {
+        if (/^sidecar exited\b/.test(String(message || ""))) {
+          handleIssue({ code: "SIDECAR_EXIT", message }, { restart: true });
+          return;
+        }
+        throttledLog(`log:${level}:${message}`, `sidecar ${level}: ${message}`, meta);
+      },
+      onStatus: (status) => {
+        lastStatus = status;
+        if (status && status.connected === true) retryAttempt = 0;
+        publishStatus();
+      },
+      onDevices: (items) => {
+        lastDevices = Array.isArray(items) ? items.slice() : [];
+        publishStatus();
+        connectFirstMatchingDevice(lastDevices);
+      },
+      onError: (err) => {
+        handleIssue(err);
+      },
+      onTransportStateChanged: (state) => {
+        if (state && state.connected === true) {
+          retryAttempt = 0;
+          clearAutoConnectTimer();
+          lastError = null;
+        } else {
+          scheduleAutoConnect(autoConnectRetryMs);
+        }
+        publishStatus();
+        // Link security/connectivity changes must retract or restore prompt fields immediately.
+        if (controller && typeof controller.notifyStateChanged === "function") {
+          controller.notifyStateChanged();
+        }
+      },
+    });
   }
 
   function start() {
     if (started) return true;
-    if (!enabled) {
+    activeConfig = readRuntimeConfig(options, env);
+    if (!activeConfig.enabled) {
+      publishStatus();
       return false;
     }
 
@@ -168,38 +425,15 @@ function createHardwareBuddyAdapter(options = {}) {
     const HardwareBuddyController = options.HardwareBuddyController || modules.HardwareBuddyController;
     const SidecarClient = options.SidecarClient || modules.SidecarClient;
     if (typeof HardwareBuddyController !== "function" || typeof SidecarClient !== "function") {
-      throw new Error("Hardware Buddy core modules are unavailable");
+      const err = new Error("Hardware Buddy core modules are unavailable");
+      handleIssue(err);
+      throw err;
     }
-    if (permissionsEnabled && typeof options.resolvePermissionEntry !== "function") {
+    if (activeConfig.permissionsEnabled && typeof options.resolvePermissionEntry !== "function") {
       log("permissions requested but resolvePermissionEntry is unavailable; hardware permission replies will be ignored");
     }
 
-    sidecar = new SidecarClient({
-      command: options.command || env.CLAWD_HARDWARE_BUDDY_PYTHON || "python",
-      args: options.args || buildSidecarArgs({ env, coreRoot }),
-      log: (level, message, meta) => log(`sidecar ${level}: ${message}`, meta),
-      onStatus: (status) => {
-        lastStatus = status;
-      },
-      onDevices: (items) => {
-        lastDevices = Array.isArray(items) ? items.slice() : [];
-      },
-      onError: (err) => {
-        log(`sidecar error: ${err && err.message ? err.message : err}`);
-        scheduleAutoConnect(autoConnectRetryMs);
-      },
-      onTransportStateChanged: (state) => {
-        if (state && state.connected === true) {
-          clearAutoConnectTimer();
-        } else {
-          scheduleAutoConnect(autoConnectRetryMs);
-        }
-        // Link security/connectivity changes must retract or restore prompt fields immediately.
-        if (controller && typeof controller.notifyStateChanged === "function") {
-          controller.notifyStateChanged();
-        }
-      },
-    });
+    sidecar = createSidecar(SidecarClient);
 
     controller = new HardwareBuddyController({
       transport: sidecar.transport,
@@ -208,7 +442,7 @@ function createHardwareBuddyAdapter(options = {}) {
       getDoNotDisturb: () => !!callSafely(options.getDoNotDisturb || (() => false), log),
       isAgentEnabled: options.isAgentEnabled,
       isAgentPermissionsEnabled: options.isAgentPermissionsEnabled,
-      resolvePermissionEntry: permissionsEnabled && typeof options.resolvePermissionEntry === "function"
+      resolvePermissionEntry: activeConfig.permissionsEnabled && typeof options.resolvePermissionEntry === "function"
         ? options.resolvePermissionEntry
         : null,
       statePriority: options.statePriority,
@@ -222,11 +456,13 @@ function createHardwareBuddyAdapter(options = {}) {
       started = true;
     } catch (err) {
       cleanupStartedParts();
+      handleIssue(err);
       throw err;
     }
-    log(`started backend=${env.CLAWD_HARDWARE_BUDDY_BACKEND || "bleak"} permissions=${permissionsEnabled ? "on" : "off"}`);
+    log(`started backend=${activeConfig.backend} permissions=${activeConfig.permissionsEnabled ? "on" : "off"}`);
+    publishStatus();
 
-    if (autoConnectAddress) {
+    if (activeConfig.address || activeConfig.autoConnectByNamePrefix) {
       scheduleAutoConnect(autoConnectDelayMs);
     }
     return true;
@@ -234,6 +470,35 @@ function createHardwareBuddyAdapter(options = {}) {
 
   function stop() {
     cleanupStartedParts();
+  }
+
+  function applySettingsChange(nextSettings) {
+    const previous = activeConfig;
+    if (nextSettings !== undefined) {
+      options.settings = nextSettings;
+      options.getSettings = null;
+    }
+    const nextOptions = nextSettings === undefined ? options : { ...options, settings: nextSettings, getSettings: null };
+    const next = readRuntimeConfig(nextOptions, env);
+    const connectionChanged = previous.backend !== next.backend
+      || previous.address !== next.address
+      || previous.namePrefix !== next.namePrefix;
+    const permissionChanged = previous.permissionsEnabled !== next.permissionsEnabled;
+    activeConfig = next;
+
+    if (!next.enabled) {
+      if (started) cleanupStartedParts({ keepConfig: true });
+      publishStatus();
+      return false;
+    }
+    if (!started) return start();
+    if (connectionChanged) {
+      cleanupStartedParts({ keepConfig: true });
+      return start();
+    }
+    if (permissionChanged) notifyPermissionsChanged();
+    publishStatus();
+    return true;
   }
 
   function notifyStateChanged() {
@@ -256,12 +521,14 @@ function createHardwareBuddyAdapter(options = {}) {
   return {
     start,
     stop,
+    applySettingsChange,
     notifyStateChanged,
     notifyPermissionsChanged,
-    isEnabled: () => enabled,
+    isEnabled: () => activeConfig.enabled === true,
     isStarted: () => started,
     getLastStatus: () => lastStatus,
     getLastDevices: () => lastDevices.slice(),
+    getStatus: () => publishStatus(),
     getController: () => controller,
     getSidecar: () => sidecar,
   };
@@ -270,4 +537,7 @@ function createHardwareBuddyAdapter(options = {}) {
 module.exports = {
   createHardwareBuddyAdapter,
   isEnabledFromEnv,
+  classifyHardwareBuddyIssue,
+  readRuntimeConfig,
+  hardwareBuddySettingsEqual,
 };

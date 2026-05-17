@@ -16,6 +16,7 @@ class FakeSidecarClient {
     this.started = false;
     this.stopped = false;
     this.connects = [];
+    this.scans = 0;
     this.sent = [];
     this.commandListeners = [];
     this.transport = {
@@ -45,6 +46,15 @@ class FakeSidecarClient {
   connect(address) {
     this.connects.push(address);
     return true;
+  }
+
+  scan() {
+    this.scans += 1;
+    return true;
+  }
+
+  emitDevices(items) {
+    if (typeof this.options.onDevices === "function") this.options.onDevices(items);
   }
 
   injectCommand(command) {
@@ -485,6 +495,35 @@ describe("hardware buddy adapter", () => {
     assert.deepStrictEqual(FakeSidecarClient.instances[0].connects, ["FAKE:CLAWSTICK"]);
   });
 
+  it("uses product settings to enable prefix scan without env flags", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const adapter = createHardwareBuddyAdapter({
+      settings: {
+        enabled: true,
+        backend: "fake",
+        address: "",
+        namePrefix: "Claude",
+        permissionsEnabled: false,
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    assert.strictEqual(adapter.start(), true);
+    assert.strictEqual(fakeTimers.timers.length, 1);
+    fakeTimers.timers[0].fn();
+
+    const sidecar = FakeSidecarClient.instances[0];
+    assert.strictEqual(sidecar.scans, 1);
+    sidecar.emitDevices([{ name: "Claude-9EA6", address: "00:4B:12:A1:9E:A6" }]);
+    assert.deepStrictEqual(sidecar.connects, [{ address: "00:4B:12:A1:9E:A6" }]);
+  });
+
   it("retries auto-connect after a connection error", () => {
     resetFakes();
     const fakeTimers = createFakeTimers();
@@ -520,10 +559,39 @@ describe("hardware buddy adapter", () => {
     assert.deepStrictEqual(sidecar.connects, ["FAKE:CLAWSTICK", "FAKE:CLAWSTICK"]);
 
     sidecar.emitError({ message: "device not found", code: "NO_DEVICE" });
-    const secondRetry = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 25 && timer !== retryTimer);
+    const secondRetry = fakeTimers.timers.find((timer) => !timer.cleared && timer.ms === 50 && timer !== retryTimer);
     assert.ok(secondRetry);
     sidecar.setConnected(true);
     assert.strictEqual(secondRetry.cleared, true);
+  });
+
+  it("classifies missing bleak as non-retryable", () => {
+    resetFakes();
+    const fakeTimers = createFakeTimers();
+    const adapter = createHardwareBuddyAdapter({
+      settings: {
+        enabled: true,
+        backend: "bleak",
+        address: "00:4B:12:A1:9E:A6",
+        namePrefix: "Claude",
+        permissionsEnabled: false,
+      },
+      coreModules: {
+        HardwareBuddyController: FakeHardwareBuddyController,
+        SidecarClient: FakeSidecarClient,
+      },
+      setTimeout: fakeTimers.setTimeout,
+      clearTimeout: fakeTimers.clearTimeout,
+    });
+
+    adapter.start();
+    const sidecar = FakeSidecarClient.instances[0];
+    sidecar.emitError({ message: "No module named bleak", code: "MISSING_BLEAK" });
+
+    const status = adapter.getStatus();
+    assert.strictEqual(status.lastError.category, "missing_bleak");
+    assert.strictEqual(status.lastError.retryable, false);
+    assert.strictEqual(fakeTimers.timers.filter((timer) => !timer.cleared).length, 1);
   });
 
   it("passes the fake secure setting through to the sidecar", () => {
