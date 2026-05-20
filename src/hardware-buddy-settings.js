@@ -4,7 +4,7 @@ const DEFAULT_HARDWARE_BUDDY_SETTINGS = Object.freeze({
   enabled: false,
   backend: "bleak",
   address: "",
-  namePrefix: "Claude",
+  namePrefix: "Clawstick",
   permissionsEnabled: false,
 });
 

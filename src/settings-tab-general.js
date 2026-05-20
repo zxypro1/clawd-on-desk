@@ -141,7 +141,7 @@
       enabled: current.enabled === true,
       backend: current.backend === "fake" ? "fake" : "bleak",
       address: typeof current.address === "string" ? current.address : "",
-      namePrefix: typeof current.namePrefix === "string" && current.namePrefix.trim() ? current.namePrefix : "Claude",
+      namePrefix: typeof current.namePrefix === "string" && current.namePrefix.trim() ? current.namePrefix : "Clawstick",
       permissionsEnabled: current.permissionsEnabled === true,
     };
   }
@@ -201,7 +201,7 @@
           maxLength: 120,
         }),
         buildHardwareBuddyTextRow("namePrefix", "hardwareBuddyNamePrefix", "hardwareBuddyNamePrefixDesc", {
-          placeholder: "Claude",
+          placeholder: "Clawstick",
           maxLength: 40,
         }),
         buildHardwareBuddySwitchRow(
@@ -257,11 +257,17 @@
     const wrap = document.createElement("div");
     wrap.className = "collapsible-summary-wrap hardware-buddy-summary-control";
     const status = runtime && runtime.hardwareBuddyStatus;
+    const config = getHardwareBuddyConfig();
     const kind = hardwareBuddyStatusKind(status);
     const chip = document.createElement("span");
     chip.className = `collapsible-summary-chip hardware-buddy-status-chip hardware-buddy-status-${kind}`;
     chip.textContent = hardwareBuddyStatusText(status);
     wrap.appendChild(chip);
+    const replies = document.createElement("span");
+    const repliesEnabled = config.enabled && config.permissionsEnabled;
+    replies.className = `collapsible-summary-chip hardware-buddy-replies-chip hardware-buddy-replies-${repliesEnabled ? "on" : "off"}`;
+    replies.textContent = t(repliesEnabled ? "hardwareBuddyRepliesOn" : "hardwareBuddyRepliesOff");
+    wrap.appendChild(replies);
     return { element: wrap };
   }
 

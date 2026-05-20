@@ -1833,6 +1833,40 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("rowSoundEnabled"));
   });
 
+  it("summarizes Hardware Buddy status and permission reply opt-in while collapsed", () => {
+    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
+    const harness = loadGeneralTabForTest({
+      snapshot: makeGeneralSnapshot({
+        hardwareBuddy: {
+          enabled: true,
+          backend: "bleak",
+          address: "",
+          namePrefix: "Clawstick",
+          permissionsEnabled: true,
+        },
+      }),
+    });
+    harness.core.runtime.hardwareBuddyStatus = {
+      started: true,
+      connected: true,
+      secure: true,
+      lastStatus: { data: { name: "Clawstick" } },
+    };
+    harness.renderContent();
+
+    const summary = harness.content.querySelector(".hardware-buddy-summary-control");
+    assert.ok(summary, "Hardware Buddy summary should render");
+    assert.deepStrictEqual(
+      summary.querySelectorAll(".collapsible-summary-chip").map((chip) => chip.textContent),
+      ["Secure", "Replies on"]
+    );
+    assert.ok(summary.querySelector(".hardware-buddy-status-secure"));
+    assert.ok(summary.querySelector(".hardware-buddy-replies-on"));
+    assert.ok(/\.hardware-buddy-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*max-width:\s*none;/.test(css));
+    assert.ok(/\.hardware-buddy-summary-control\s*\{[\s\S]*flex-wrap:\s*wrap;[\s\S]*max-width:\s*min\(286px,\s*48vw\);/.test(css));
+    assert.ok(/\.hardware-buddy-replies-on\s*\{[\s\S]*color:\s*var\(--accent\);/.test(css));
+  });
+
   it("adds hover affordance to General size and volume sliders", () => {
     const css = fs.readFileSync(SETTINGS_CSS, "utf8");
     assert.ok(/\.size-slider:hover::-webkit-slider-thumb\s*\{[\s\S]*transform:\s*scale\(1\.08\);/.test(css));

@@ -69,7 +69,7 @@ function readRuntimeConfig(options, env = process.env) {
   if (options.autoConnectAddress) config.address = String(options.autoConnectAddress).trim();
 
   config.backend = config.backend === "fake" ? "fake" : "bleak";
-  if (!config.namePrefix) config.namePrefix = "Claude";
+  if (!config.namePrefix) config.namePrefix = "Clawstick";
   config.autoConnectByNamePrefix = !config.address && (hasSettings || !!env.CLAWD_HARDWARE_BUDDY_NAME_PREFIX);
   return config;
 }

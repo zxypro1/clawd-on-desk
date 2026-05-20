@@ -115,7 +115,7 @@ describe("prefs.getDefaults", () => {
       enabled: false,
       backend: "bleak",
       address: "",
-      namePrefix: "Claude",
+      namePrefix: "Clawstick",
       permissionsEnabled: false,
     });
   });
