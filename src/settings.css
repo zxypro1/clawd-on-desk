@@ -355,10 +355,6 @@ html, body {
   flex-wrap: nowrap;
   max-width: none;
 }
-.hardware-buddy-collapsible .collapsible-group-summary {
-  flex: 0 0 auto;
-  max-width: none;
-}
 .collapsible-group:not(.collapsed) .collapsible-group-summary {
   opacity: 0.72;
   transform: translateX(2px);
@@ -612,19 +608,6 @@ html, body {
   color: var(--text-secondary);
 }
 
-.hardware-buddy-summary-control {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: min(286px, 48vw);
-  min-width: 0;
-}
-.hardware-buddy-summary-control .collapsible-summary-chip {
-  max-width: min(140px, 100%);
-  min-width: 0;
-}
 .hardware-buddy-status-row .row-desc {
   max-width: 420px;
 }
@@ -673,13 +656,6 @@ html, body {
   background: rgba(185, 28, 28, 0.08);
   border-color: rgba(185, 28, 28, 0.24);
 }
-.hardware-buddy-replies-on {
-  background: rgba(217, 119, 87, 0.12);
-  color: var(--accent);
-}
-.hardware-buddy-replies-off {
-  color: var(--text-tertiary);
-}
 .hardware-buddy-text-control {
   min-width: min(260px, 42vw);
 }
@@ -711,9 +687,6 @@ html, body {
   .hardware-buddy-status-error { color: #f87171; }
 }
 @media (max-width: 720px) {
-  .hardware-buddy-summary-control {
-    max-width: min(220px, 42vw);
-  }
   .hardware-buddy-field-row {
     align-items: stretch;
   }
@@ -3174,8 +3147,8 @@ html, body {
   cursor: help;
 }
 
-/* ── Remote approval tab (Telegram is the only channel today) ── */
-.tg-approval-channel-card.collapsible-group {
+/* ── Remote approval tab ── */
+.remote-approval-channel-card.collapsible-group {
   margin: 8px 0 14px;
 }
 .tg-approval-channel-header {
