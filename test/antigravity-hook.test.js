@@ -119,17 +119,71 @@ describe("Antigravity hook script", () => {
       },
       postPermission: (body, _options, callback) => {
         postedPermissions.push(JSON.parse(body));
-        callback(true, 23333, JSON.stringify({ decision: "allow" }), 200);
+        callback(true, 23333, JSON.stringify({
+          decision: "allow",
+          permissionOverrides: ["command(npm test)", "bad\nrule"],
+        }), 200);
       },
     });
 
-    assert.deepStrictEqual(JSON.parse(result.stdout), { decision: "allow" });
+    assert.deepStrictEqual(JSON.parse(result.stdout), {
+      decision: "allow",
+      allowTool: true,
+      permissionOverrides: ["command(npm test)"],
+    });
     assert.strictEqual(result.permissionPosted, true);
     assert.strictEqual(postedStates.length, 1);
     assert.strictEqual(postedStates[0].state, "working");
     assert.strictEqual(postedPermissions.length, 1);
     assert.strictEqual(postedPermissions[0].agent_id, "antigravity-cli");
     assert.strictEqual(postedPermissions[0].tool_name, "run_command");
+  });
+
+  it("writes gated debug logs to a file without changing hook stdout", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "clawd-antigravity-hook-debug-"));
+    const debugFile = path.join(tmpDir, "hook-debug.log");
+    const result = await __test.sendHookEvent({
+      conversationId: "c1",
+      workspacePaths: ["/workspace"],
+      toolCall: {
+        name: "run_command",
+        args: {
+          CommandLine: "Remove-Item -Path secret.txt",
+          Cwd: "/workspace",
+          apiKey: "should-not-log",
+        },
+      },
+    }, "PreToolUse", {
+      env: {
+        CLAWD_ANTIGRAVITY_HOOK_DEBUG: "1",
+        CLAWD_ANTIGRAVITY_HOOK_DEBUG_FILE: debugFile,
+      },
+      postState: (_body, _options, callback) => callback(true, 23333),
+      postPermission: (_body, _options, callback) => callback(true, 23333, JSON.stringify({
+        decision: "allow",
+        permissionOverrides: ["command(Remove-Item)"],
+      }), 200),
+    });
+
+    assert.deepStrictEqual(JSON.parse(result.stdout), {
+      decision: "allow",
+      allowTool: true,
+      permissionOverrides: ["command(Remove-Item)"],
+    });
+
+    const entries = fs.readFileSync(debugFile, "utf8")
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line));
+    assert.deepStrictEqual(entries.map((entry) => entry.event), [
+      "permission-request",
+      "permission-response",
+      "hook-result",
+    ]);
+    assert.strictEqual(entries[0].toolName, "run_command");
+    assert.strictEqual(entries[0].toolInput.CommandLine, "Remove-Item -Path secret.txt");
+    assert.strictEqual(entries[0].toolInput.apiKey, "[redacted]");
+    assert.strictEqual(entries[1].stdout, result.stdout);
   });
 
   it("falls back to ask when Clawd returns no Antigravity decision", async () => {
@@ -154,15 +208,40 @@ describe("Antigravity hook script", () => {
           decision: { behavior: "deny", message: "Blocked by user" },
         },
       }), 200)),
-      { decision: "deny", reason: "Blocked by user" }
+      { decision: "deny", reason: "Blocked by user", denyReason: "Blocked by user" }
     );
     assert.deepStrictEqual(
       JSON.parse(__test.sanitizeAntigravityPermissionOutput(JSON.stringify({
         decision: "force_ask",
-        permissionOverrides: ["command(*)"],
+        reason: "Review natively",
+        permissionOverrides: ["command(npm test)", "command(npm test)", "", "x".repeat(241)],
       }), 200)),
-      { decision: "ask" }
+      {
+        decision: "force_ask",
+        reason: "Review natively",
+        permissionOverrides: ["command(npm test)"],
+      }
     );
+    assert.deepStrictEqual(
+      JSON.parse(__test.sanitizeAntigravityPermissionOutput(JSON.stringify({
+        decision: "allow",
+        permissionOverrides: ["command(Remove-Item test.md)", "bad\nrule"],
+      }), 200)),
+      { decision: "allow", allowTool: true, permissionOverrides: ["command(Remove-Item test.md)"] }
+    );
+    assert.deepStrictEqual(
+      JSON.parse(__test.sanitizeAntigravityPermissionOutput(JSON.stringify({
+        decision: "ask",
+        permissionOverrides: ["read_file(/repo/package.json)"],
+      }), 200)),
+      { decision: "ask", permissionOverrides: ["read_file(/repo/package.json)"] }
+    );
+    assert.deepStrictEqual(__test.normalizePermissionOverrides([
+      "command(npm test)",
+      "command(npm test)",
+      "bad\nrule",
+      123,
+    ]), ["command(npm test)"]);
   });
 
   it("maps PostToolUse errors to PostToolUseFailure", async () => {

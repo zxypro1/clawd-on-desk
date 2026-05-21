@@ -9,7 +9,7 @@
 | **Copilot CLI：本地需手动配置 hooks** | 本地安装仍需手动创建 `~/.copilot/hooks/hooks.json`。SSH 远程部署 (`scripts/remote-deploy.sh`) 现在已经自动配置 Copilot hooks。 |
 | **Copilot CLI：无权限气泡** | Copilot 的 `preToolUse` 只支持拒绝，无法做完整的允许/拒绝审批流。权限气泡目前支持 Claude Code、Codex CLI、Antigravity CLI、CodeBuddy、opencode 和 Pi。 |
 | **Gemini CLI：无权限气泡** | Gemini 仍在终端内处理工具审批。Clawd 会观察 Gemini hook 事件，但除非 Gemini 未来提供兼容的阻塞式审批协议，否则不显示权限气泡。 |
-| **Antigravity CLI：权限气泡仍属实验功能** | Clawd 会把 Antigravity `PreToolUse` 映射成阻塞式 Allow/Deny 气泡，但不会写入 `permissionOverrides` 或“始终允许”规则。Clawd 无法显示气泡、DND 开启、气泡关闭或 Antigravity 子开关关闭时，会返回 `ask` 交给 Antigravity 原生确认。 |
+| **Antigravity CLI：权限气泡仍属实验功能** | Clawd 会把 Antigravity `PreToolUse` 映射成阻塞式 Allow/Deny 权限气泡。Allow 会带上 `decision:"allow"`、`allowTool:true`，并在能推断时带上生成的 scoped override。Clawd 不写 Antigravity settings 授权规则，也不提供 Antigravity Always Allow。Clawd 无法显示气泡、DND 开启、气泡关闭或 Antigravity 子开关关闭时，会返回 `ask` 交给 Antigravity 原生确认。 |
 | **Cursor Agent：无权限气泡** | Cursor 在 hook 的 stdout JSON 里处理权限，而不是走 HTTP 阻塞式审批，Clawd 无法接管这条审批链路。 |
 | **Cursor Agent：启动恢复能力有限** | 启动时不做进程检测，否则任意 Cursor 编辑器进程都可能误判为活跃会话。Clawd 会保持 idle，直到收到第一条 hook 事件。 |
 | **Hermes Agent：安装前可见但不生效** | Hermes 默认在 Settings 里开启，方便发现；但 Clawd 只有在检测到真实 Hermes 安装后才会写入 plugin 文件。安装 Hermes 后重启 Clawd，或执行 `npm run install:hermes-plugin`。 |

@@ -2,6 +2,8 @@
 // Clawd - Antigravity CLI hook adapter
 // Registered in Antigravity's global hooks file by hooks/antigravity-install.js
 
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { postPermissionToRunningServer, postStateToRunningServer, readHostPrefix } = require("./server-config");
 const { createPidResolver, readStdinJson, getPlatformConfig } = require("./shared-process");
@@ -11,6 +13,13 @@ const TOOL_INPUT_STRING_MAX = 2000;
 const TOOL_INPUT_ARRAY_MAX = 32;
 const TOOL_INPUT_OBJECT_KEYS_MAX = 64;
 const TOOL_INPUT_DEPTH_MAX = 6;
+const PERMISSION_OVERRIDE_MAX = 8;
+const PERMISSION_OVERRIDE_STRING_MAX = 240;
+const DEBUG_STRING_MAX = 2000;
+const DEBUG_TOOL_INPUT_STRING_MAX = 240;
+const DEBUG_OBJECT_KEYS_MAX = 32;
+const DEBUG_ARRAY_MAX = 16;
+const DEBUG_DEPTH_MAX = 4;
 
 const HOOK_MAP = {
   PreInvocation: { state: "thinking", event: "UserPromptSubmit" },
@@ -42,10 +51,102 @@ function getAntigravityPermissionTimeoutMs(env = process.env) {
   return ANTIGRAVITY_PERMISSION_TIMEOUT_MS;
 }
 
+function isTruthyDebugValue(value) {
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function isAntigravityHookDebugEnabled(env = process.env) {
+  return isTruthyDebugValue(String(env.CLAWD_ANTIGRAVITY_HOOK_DEBUG || "").toLowerCase());
+}
+
+function getAntigravityHookDebugLogPath(env = process.env) {
+  if (typeof env.CLAWD_ANTIGRAVITY_HOOK_DEBUG_FILE === "string" && env.CLAWD_ANTIGRAVITY_HOOK_DEBUG_FILE.trim()) {
+    return env.CLAWD_ANTIGRAVITY_HOOK_DEBUG_FILE.trim();
+  }
+  return path.join(os.homedir(), ".gemini", "antigravity-cli", "clawd-hook-debug.log");
+}
+
+function truncateDebugString(value, max = DEBUG_STRING_MAX) {
+  if (typeof value !== "string") return value;
+  if (value.length <= max) return value;
+  return `${value.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function normalizeDebugValue(value, depth = 0) {
+  if (depth > DEBUG_DEPTH_MAX) return "[truncated]";
+  if (Array.isArray(value)) {
+    return value.slice(0, DEBUG_ARRAY_MAX).map((entry) => normalizeDebugValue(entry, depth + 1));
+  }
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort().slice(0, DEBUG_OBJECT_KEYS_MAX)) {
+      if (/token|secret|password|authorization|credential|api[_-]?key/i.test(key)) {
+        out[key] = "[redacted]";
+        continue;
+      }
+      out[key] = normalizeDebugValue(value[key], depth + 1);
+    }
+    return out;
+  }
+  if (typeof value === "string") return truncateDebugString(value, DEBUG_TOOL_INPUT_STRING_MAX);
+  if (value === null || typeof value === "number" || typeof value === "boolean") return value;
+  return value === undefined ? undefined : String(value);
+}
+
+function writeAntigravityHookDebug(env, event, fields = {}) {
+  if (!isAntigravityHookDebugEnabled(env)) return false;
+  let line;
+  try {
+    line = JSON.stringify({
+      ts: new Date().toISOString(),
+      event,
+      ...fields,
+    });
+  } catch {
+    line = JSON.stringify({
+      ts: new Date().toISOString(),
+      event: "debug-serialize-failed",
+      originalEvent: event,
+    });
+  }
+
+  if (isTruthyDebugValue(String(env.CLAWD_ANTIGRAVITY_HOOK_DEBUG_STDERR || "").toLowerCase())) {
+    try {
+      process.stderr.write(`[clawd-antigravity] ${line}\n`);
+    } catch {}
+  }
+
+  try {
+    const debugPath = getAntigravityHookDebugLogPath(env);
+    fs.mkdirSync(path.dirname(debugPath), { recursive: true });
+    fs.appendFileSync(debugPath, `${line}${os.EOL}`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function buildAntigravityNoDecisionOutput(reason) {
   const body = { decision: "ask" };
   if (typeof reason === "string" && reason.trim()) body.reason = reason.trim();
   return JSON.stringify(body);
+}
+
+function normalizePermissionOverrides(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const text = entry.trim();
+    if (!text || text.length > PERMISSION_OVERRIDE_STRING_MAX) continue;
+    if (/[\u0000-\u001f\u007f]/.test(text)) continue;
+    if (seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length >= PERMISSION_OVERRIDE_MAX) break;
+  }
+  return out;
 }
 
 function stdoutForEvent(hookName) {
@@ -244,7 +345,9 @@ function sanitizeAntigravityPermissionOutput(rawBody, statusCode = 0) {
     ? parsed.hookSpecificOutput.decision.behavior
     : "";
   const decision = directDecision || hookDecision;
-  const normalized = decision === "deny" ? "deny" : (decision === "allow" ? "allow" : null);
+  const normalized = decision === "deny" ? "deny"
+    : (decision === "allow" ? "allow"
+      : (decision === "ask" || decision === "force_ask" ? decision : null));
   if (!normalized) return buildAntigravityNoDecisionOutput();
 
   const out = { decision: normalized };
@@ -255,7 +358,13 @@ function sanitizeAntigravityPermissionOutput(rawBody, statusCode = 0) {
       && typeof parsed.hookSpecificOutput.decision.message === "string"
       ? parsed.hookSpecificOutput.decision.message
       : "");
-  if (normalized === "deny" && reason) out.reason = reason;
+  if (reason && normalized !== "allow") out.reason = reason;
+  if (normalized === "allow") out.allowTool = true;
+  if (normalized === "deny" && reason) out.denyReason = reason;
+  const permissionOverrides = normalizePermissionOverrides(parsed.permissionOverrides);
+  if (normalized !== "deny" && permissionOverrides.length) {
+    out.permissionOverrides = permissionOverrides;
+  }
   return JSON.stringify(out);
 }
 
@@ -281,13 +390,23 @@ function requestAntigravityPermission(body, deps = {}) {
         env,
       },
       (ok, port, responseBody, statusCode) => {
+        const stdout = ok
+          ? sanitizeAntigravityPermissionOutput(responseBody, statusCode)
+          : buildAntigravityNoDecisionOutput();
+        writeAntigravityHookDebug(env, "permission-response", {
+          sessionId: body && body.session_id,
+          toolName: body && body.tool_name,
+          posted: !!ok,
+          port: port || null,
+          statusCode: statusCode || 0,
+          responseBody: typeof responseBody === "string" ? truncateDebugString(responseBody) : "",
+          stdout,
+        });
         resolvePermission({
           posted: !!ok,
           port: port || null,
           statusCode: statusCode || 0,
-          stdout: ok
-            ? sanitizeAntigravityPermissionOutput(responseBody, statusCode)
-            : buildAntigravityNoDecisionOutput(),
+          stdout,
         });
       }
     );
@@ -313,6 +432,17 @@ async function sendHookEvent(payload, argvEvent, deps = {}) {
     pidMeta,
   });
 
+  if (permissionBody) {
+    writeAntigravityHookDebug(env, "permission-request", {
+      hookName,
+      sessionId: permissionBody.session_id,
+      toolName: permissionBody.tool_name,
+      cwd: permissionBody.cwd || "",
+      stepIdx: permissionBody.step_idx ?? null,
+      toolInput: normalizeDebugValue(permissionBody.tool_input),
+    });
+  }
+
   if (!body) {
     if (!permissionBody) return { hookName, stdout: outLine, body: null, posted: false, port: null };
   }
@@ -323,6 +453,15 @@ async function sendHookEvent(payload, argvEvent, deps = {}) {
   }
 
   const permissionResult = await requestAntigravityPermission(permissionBody, deps);
+  writeAntigravityHookDebug(env, "hook-result", {
+    hookName,
+    sessionId: permissionBody.session_id,
+    toolName: permissionBody.tool_name,
+    stdout: permissionResult.stdout,
+    permissionPosted: permissionResult.posted,
+    permissionPort: permissionResult.port,
+    permissionStatusCode: permissionResult.statusCode,
+  });
   return {
     hookName,
     stdout: permissionResult.stdout,
@@ -347,15 +486,23 @@ async function main(argvEvent = process.argv[2], deps = {}) {
     readHostPrefix: deps.readHostPrefix || readHostPrefix,
     resolvePid: deps.resolvePid || resolve,
   });
+  writeAntigravityHookDebug(deps.env || process.env, "stdout-write", {
+    hookName: result.hookName,
+    stdout: result.stdout,
+  });
   process.stdout.write(result.stdout + "\n");
 }
 
 if (require.main === module) {
   main()
-    .catch(() => {
+    .catch((err) => {
       // Antigravity treats a hook command failure as an agent failure. This
       // integration must fail open, so every local failure must fall back to
       // Antigravity's native behavior instead of aborting the agent run.
+      writeAntigravityHookDebug(process.env, "hook-error", {
+        hookName: process.argv[2] || "",
+        error: err && err.message ? err.message : String(err || "unknown"),
+      });
       process.stdout.write(stdoutForEvent(process.argv[2]) + "\n");
     })
     .finally(() => {
@@ -368,6 +515,11 @@ module.exports = {
     buildStateBody,
     buildPermissionBody,
     sanitizeAntigravityPermissionOutput,
+    normalizePermissionOverrides,
+    isAntigravityHookDebugEnabled,
+    getAntigravityHookDebugLogPath,
+    normalizeDebugValue,
+    writeAntigravityHookDebug,
     buildAntigravityNoDecisionOutput,
     getAntigravityPermissionTimeoutMs,
     resolveHookName,
