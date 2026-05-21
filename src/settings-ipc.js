@@ -240,7 +240,10 @@ function registerSettingsIpc(options = {}) {
     }
     rememberRuntimeSoundOverrideFile({ getActiveTheme }, themeId, soundName, destPath);
     const newUrl = themeLoader.getSoundUrl(soundName);
-    if (newUrl) sendToRenderer("invalidate-sound-cache", newUrl);
+    if (newUrl) {
+      sendToRenderer("invalidate-sound-cache", newUrl);
+      sendToRenderer("preload-sounds", { urls: [newUrl] });
+    }
     return { status: "ok", file: destFilename };
   });
 

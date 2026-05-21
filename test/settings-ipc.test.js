@@ -502,6 +502,7 @@ test("settings IPC copies sound overrides, removes stale siblings, and invalidat
         originalName: "picked.wav",
       }],
       ["sendToRenderer", "invalidate-sound-cache", "file:///complete.wav"],
+      ["sendToRenderer", "preload-sounds", { urls: ["file:///complete.wav"] }],
     ]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

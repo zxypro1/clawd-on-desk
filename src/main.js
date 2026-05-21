@@ -629,6 +629,20 @@ function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
 }
 
+function getThemeSoundPreloadUrls() {
+  const urls = [];
+  for (const name of ["complete", "confirm"]) {
+    const url = themeRuntime.getSoundUrl(name);
+    if (url && !urls.includes(url)) urls.push(url);
+  }
+  return urls;
+}
+
+function syncSoundPreloads() {
+  const urls = getThemeSoundPreloadUrls();
+  if (urls.length) sendToRenderer("preload-sounds", { urls });
+}
+
 function setViewportOffsetY(offsetY) { return petWindowRuntime.setViewportOffsetY(offsetY); }
 function getPetWindowBounds() { return petWindowRuntime.getPetWindowBounds(); }
 function applyPetWindowBounds(bounds) { return petWindowRuntime.applyPetWindowBounds(bounds); }
@@ -644,6 +658,7 @@ function syncHitStateAfterLoad() {
 }
 
 function syncRendererStateAfterLoad({ includeStartupRecovery = true } = {}) {
+  syncSoundPreloads();
   sendToRenderer("low-power-idle-mode-change", lowPowerIdleMode);
   if (_mini.getMiniMode()) {
     sendToRenderer("mini-mode-change", true, _mini.getMiniEdge());
@@ -1207,6 +1222,16 @@ function sessionLog(msg) {
   const { rotatedAppend } = require("./log-rotate");
   rotatedAppend(sessionDebugLog, `[${new Date().toISOString()}] ${msg}\n`);
 }
+
+ipcMain.on("sound-playback-error", (_event, payload) => {
+  const phase = payload && typeof payload.phase === "string"
+    ? payload.phase.replace(/[^a-z0-9_-]/gi, "").slice(0, 32)
+    : "unknown";
+  const message = payload && typeof payload.message === "string"
+    ? payload.message.replace(/\s+/g, " ").slice(0, 240)
+    : "unknown";
+  sessionLog(`sound playback error phase=${phase || "unknown"} message=${message || "unknown"}`);
+});
 
 function focusLog(msg) {
   if (!focusDebugLog) return;
