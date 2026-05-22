@@ -17,8 +17,7 @@ const DEFAULT_CONFIG_PATH = path.join(DEFAULT_PARENT_DIR, "hooks.json");
 // call the built-in `ask_permission` tool before sensitive actions, which then
 // triggers agy's native 5-option menu — there's no way for a hook to suppress
 // that menu. Layering a Clawd bubble on top of (or in front of) the native
-// menu yields 8-10 confirmations for a single user task. See
-// docs/plans/plan-antigravity-permission-tiers.md Findings (U0 = Branch D).
+// menu yields 8-10 confirmations for a single user task.
 // Antigravity stays a state-only integration; agy native menu owns permission.
 const ANTIGRAVITY_HOOK_EVENTS = [
   "PreInvocation",

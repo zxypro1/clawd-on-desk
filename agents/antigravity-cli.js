@@ -6,9 +6,8 @@ module.exports = {
   name: "Antigravity CLI",
   processNames: { win: ["agy.exe"], mac: ["agy"], linux: ["agy"] },
   eventSource: "hook",
-  // PreToolUse intentionally omitted — agy 1.0.1 owns permission via its native
-  // 5-option menu (triggered by the LLM's proactive ask_permission tool calls);
-  // Clawd is state-only here. See docs/plans/plan-antigravity-permission-tiers.md.
+  // PreToolUse intentionally omitted: agy owns permission via its native menu,
+  // triggered by the LLM's proactive ask_permission tool calls.
   eventMap: {
     PreInvocation: "thinking",
     PostToolUse: "working",

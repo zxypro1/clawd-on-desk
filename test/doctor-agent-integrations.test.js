@@ -81,7 +81,7 @@ function antigravityDescriptor() {
 }
 
 function antigravityHooksConfig(commandForEvent = (event) => `"/node" "/app/hooks/antigravity-hook.js" ${event}`) {
-  // D2: state-only — no PreToolUse. See docs/plans/plan-antigravity-permission-tiers.md.
+  // D2: state-only — no PreToolUse.
   return {
     clawd: {
       PreInvocation: [{ type: "command", command: commandForEvent("PreInvocation") }],

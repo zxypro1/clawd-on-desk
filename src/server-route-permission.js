@@ -300,7 +300,6 @@ function handlePermissionPost(req, res, options) {
       // permission.js / bubble-format.js are kept as intentional dead code so
       // a future Path C restoration (e.g. if agy ships a final-allow protocol
       // field) only needs to re-enable this entry point.
-      // See docs/plans/plan-antigravity-permission-tiers.md U0 Findings.
       if (data.agent_id === "antigravity-cli") {
         const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "Unknown";
         if (ctx.doNotDisturb) {

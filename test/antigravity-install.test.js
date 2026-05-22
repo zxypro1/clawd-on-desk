@@ -64,8 +64,7 @@ describe("Antigravity hook installer", () => {
       assert.ok(commandText.includes(MARKER));
       assert.ok(commandText.includes(event));
     }
-    // D2: PreToolUse intentionally NOT registered. See
-    // docs/plans/plan-antigravity-permission-tiers.md Findings (U0 = Branch D).
+    // D2: PreToolUse intentionally NOT registered.
     assert.strictEqual(hooks[HOOK_GROUP_ID].PreToolUse, undefined);
     assert.strictEqual(hooks[HOOK_GROUP_ID].PostToolUse[0].matcher, "*");
     assert.strictEqual(hooks[HOOK_GROUP_ID].PostToolUse[0].hooks[0].timeout, 10);

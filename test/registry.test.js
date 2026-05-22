@@ -155,7 +155,6 @@ describe("Agent Registry", () => {
     const antigravity = registry.getAgent("antigravity-cli");
     assert.strictEqual(antigravity.capabilities.httpHook, false);
     // D2: state-only integration, agy native menu owns permission flow.
-    // See docs/plans/plan-antigravity-permission-tiers.md Findings.
     assert.strictEqual(antigravity.capabilities.permissionApproval, false);
     assert.strictEqual(antigravity.capabilities.interactiveBubble, false);
     assert.strictEqual(antigravity.capabilities.notificationHook, false);
