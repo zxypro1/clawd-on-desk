@@ -12,7 +12,7 @@
 
 **Gemini CLI** — hooks live in `~/.gemini/settings.json`. Clawd auto-registers them on launch when Gemini is installed, or you can run `npm run install:gemini-hooks` manually.
 
-**Antigravity CLI (agy)** — hooks live in `~/.gemini/config/hooks.json`. Clawd auto-registers them on launch when Antigravity config exists, or you can run `npm run install:antigravity-hooks` manually. `PreToolUse` updates the pet and can show an experimental Allow/Deny permission bubble. Allow returns `decision:"allow"` with the agy compatibility flag `allowTool:true`; Deny returns `decision:"deny"` with `denyReason`. Clawd does not write Antigravity settings permission rules, does not emit `permissionOverrides`, and does not expose Antigravity Always Allow. If Clawd is unavailable, DND is on, bubbles are disabled, or the Antigravity sub-gate is off, the hook returns `ask` so agy keeps its native permission flow.
+**Antigravity CLI (agy)** — hooks live in `~/.gemini/config/hooks.json`. Clawd auto-registers them on launch when Antigravity config exists, or you can run `npm run install:antigravity-hooks` manually. Clawd is a **state-only** integration for agy: it reflects working / idle / attention state on the pet but does **not** show permission bubbles. agy 1.0.1's LLMs proactively call the built-in `ask_permission` tool, which triggers agy's own 5-option native menu (including "Persist to settings.json" for permanent rules). Layering a Clawd bubble on top yielded 8-10 confirmations per task, so PreToolUse hook is intentionally not registered.
 
 **Cursor Agent** — hooks live in `~/.cursor/hooks.json`. Clawd auto-registers them on launch when Cursor is installed, or you can run `npm run install:cursor-hooks` manually.
 

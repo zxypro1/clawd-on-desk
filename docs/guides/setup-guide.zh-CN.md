@@ -12,7 +12,7 @@
 
 **Gemini CLI** — hooks 配置在 `~/.gemini/settings.json`。如果本机已安装 Gemini，Clawd 启动时会自动注册；也可以手动执行 `npm run install:gemini-hooks`。
 
-**Antigravity CLI (agy)** — hooks 配置在 `~/.gemini/config/hooks.json`。如果 Antigravity 配置已经存在，Clawd 启动时会自动注册；也可以手动执行 `npm run install:antigravity-hooks`。`PreToolUse` 会更新桌宠状态，并可显示实验性 Allow/Deny 权限气泡。Allow 会带上 `decision:"allow"` 和 agy 兼容字段 `allowTool:true`；Deny 会带上 `decision:"deny"` 和 `denyReason`。Clawd 不写 Antigravity settings 授权规则、不主动生成 `permissionOverrides`、也不提供 Antigravity Always Allow。Clawd 不可达、DND 开启、气泡关闭或 Antigravity 子开关关闭时，hook 会返回 `ask`，由 agy 原生权限确认接管。
+**Antigravity CLI (agy)** — hooks 配置在 `~/.gemini/config/hooks.json`。如果 Antigravity 配置已经存在，Clawd 启动时会自动注册；也可以手动执行 `npm run install:antigravity-hooks`。Clawd 对 agy 是**仅状态同步**集成：桌宠会反映 working / idle / attention 状态，**但不显示权限气泡**。agy 1.0.1 的 LLM 会主动调内置 `ask_permission` 工具，触发 agy 自己的 5 选项 native menu（含 "Persist to settings.json" 永久规则）。在它之上再加一层 Clawd bubble 会让单次任务变成 8-10 次确认，所以 PreToolUse hook 故意不注册。
 
 **Cursor Agent** — hooks 配置在 `~/.cursor/hooks.json`。如果本机已安装 Cursor，Clawd 启动时会自动注册；也可以手动执行 `npm run install:cursor-hooks`。
 

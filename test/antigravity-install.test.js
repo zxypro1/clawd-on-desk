@@ -46,7 +46,7 @@ describe("Antigravity hook installer", () => {
 
     const configPath = path.join(homeDir, ".gemini", "config", "hooks.json");
     assert.strictEqual(result.installed, true);
-    assert.strictEqual(result.added, 5);
+    assert.strictEqual(result.added, 4);
 
     const hooks = readJson(configPath);
     assert.ok(hooks[HOOK_GROUP_ID]);
@@ -64,9 +64,10 @@ describe("Antigravity hook installer", () => {
       assert.ok(commandText.includes(MARKER));
       assert.ok(commandText.includes(event));
     }
-    assert.strictEqual(hooks[HOOK_GROUP_ID].PreToolUse[0].matcher, "*");
+    // D2: PreToolUse intentionally NOT registered. See
+    // docs/plans/plan-antigravity-permission-tiers.md Findings (U0 = Branch D).
+    assert.strictEqual(hooks[HOOK_GROUP_ID].PreToolUse, undefined);
     assert.strictEqual(hooks[HOOK_GROUP_ID].PostToolUse[0].matcher, "*");
-    assert.strictEqual(hooks[HOOK_GROUP_ID].PreToolUse[0].hooks[0].timeout, 600);
     assert.strictEqual(hooks[HOOK_GROUP_ID].PostToolUse[0].hooks[0].timeout, 10);
   });
 
@@ -79,7 +80,7 @@ describe("Antigravity hook installer", () => {
     assert.strictEqual(result.installed, true);
     assert.strictEqual(result.added, 0);
     assert.strictEqual(result.updated, 0);
-    assert.strictEqual(result.skipped, 5);
+    assert.strictEqual(result.skipped, 4);
   });
 
   it("skips when Antigravity config is absent", () => {
@@ -185,7 +186,7 @@ describe("Antigravity hook installer", () => {
 
     const hooks = readJson(path.join(homeDir, ".gemini", "config", "hooks.json"));
     assert.strictEqual(result.updated, 0);
-    assert.strictEqual(result.skipped, 5);
+    assert.strictEqual(result.skipped, 4);
     assert.match(decodeEncodedCommand(hooks[HOOK_GROUP_ID].PreInvocation[0].command), /C:\\Tools\\node\.exe/);
   });
 });

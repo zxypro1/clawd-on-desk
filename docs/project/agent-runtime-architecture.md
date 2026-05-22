@@ -39,12 +39,11 @@ Gemini CLI 状态同步（hook-only，stdin JSON + stdout JSON）：
     → 同上状态机（agent_id: gemini-cli）
 
 Antigravity CLI (agy) 状态同步（hook-only，stdin JSON + stdout JSON）：
-  agy 触发 PreInvocation / PreToolUse / PostToolUse / PostInvocation / Stop
+  agy 触发 PreInvocation / PostToolUse / PostInvocation / Stop
     → hooks/antigravity-hook.js（camelCase payload + argv 事件名 → agents/antigravity-cli.js 映射）
     → HTTP POST 127.0.0.1:23333/state（状态）
-    → HTTP POST 127.0.0.1:23333/permission（PreToolUse 实验权限气泡）
     → 同上状态机（agent_id: antigravity-cli）
-  Hook 注册到 ~/.gemini/config/hooks.json 的 clawd hook group；PreToolUse 在 Clawd 气泡 Allow/Deny 后 stdout 返回 allow/deny，Allow 同时带上 agy 兼容字段 allowTool:true，Deny 带上 denyReason。Clawd 不写 Antigravity settings 授权规则、不主动生成 permissionOverrides、也不提供 Antigravity Always Allow。DND、禁用、气泡不可用或 Clawd 不可达时返回 ask，让 agy 保留原生权限确认。Stop stdout 返回允许停止的 JSON。
+  Hook 注册到 ~/.gemini/config/hooks.json 的 clawd hook group，**仅状态事件**。PreToolUse **故意不注册**，权限完全交给 agy 自己 5 选项 native menu（agy 1.0.1 LLM 主动调内置 ask_permission 工具触发，含 "Persist to settings.json" 持久规则）。Stop stdout 返回允许停止的 JSON。决策依据见 docs/plans/plan-antigravity-permission-tiers.md。
 
 Kiro CLI 状态同步（per-agent hook，stdin JSON）：
   Kiro CLI 触发事件

@@ -154,8 +154,10 @@ describe("Agent Registry", () => {
 
     const antigravity = registry.getAgent("antigravity-cli");
     assert.strictEqual(antigravity.capabilities.httpHook, false);
-    assert.strictEqual(antigravity.capabilities.permissionApproval, true);
-    assert.strictEqual(antigravity.capabilities.interactiveBubble, true);
+    // D2: state-only integration, agy native menu owns permission flow.
+    // See docs/plans/plan-antigravity-permission-tiers.md Findings.
+    assert.strictEqual(antigravity.capabilities.permissionApproval, false);
+    assert.strictEqual(antigravity.capabilities.interactiveBubble, false);
     assert.strictEqual(antigravity.capabilities.notificationHook, false);
     assert.strictEqual(antigravity.capabilities.sessionEnd, true);
     assert.strictEqual(antigravity.capabilities.subagent, true);
@@ -214,7 +216,9 @@ describe("Agent Registry", () => {
 
     const antigravity = registry.getAgent("antigravity-cli");
     assert.strictEqual(antigravity.eventMap.PreInvocation, "thinking");
-    assert.strictEqual(antigravity.eventMap.PreToolUse, "working");
+    // D2: PreToolUse intentionally absent — agy native menu handles permission.
+    assert.strictEqual(antigravity.eventMap.PreToolUse, undefined);
+    assert.strictEqual(antigravity.eventMap.PostToolUse, "working");
     assert.strictEqual(antigravity.eventMap.Stop, "attention");
 
     const cursor = registry.getAgent("cursor-agent");
