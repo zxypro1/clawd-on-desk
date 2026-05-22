@@ -39,8 +39,6 @@ const LINUX_WINDOW_TYPE = "toolbar";
 // 24px matches the 8px stack margin on both edges plus a small buffer, so a
 // single tall bubble never hugs or exceeds the visible work area.
 const BUBBLE_HEIGHT_RESERVE = 24;
-const ANTIGRAVITY_PERMISSION_OVERRIDE_MAX = 8;
-const ANTIGRAVITY_PERMISSION_OVERRIDE_STRING_MAX = 240;
 
 function requiredDependency(value, name, owner) {
   if (!value) throw new Error(`${owner} requires ${name}`);
@@ -155,23 +153,6 @@ function buildCodexPermissionResponseBody(decisionOrBehavior, message) {
   });
 }
 
-function normalizeAntigravityPermissionOverrides(value) {
-  if (!Array.isArray(value)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const text = entry.trim();
-    if (!text || text.length > ANTIGRAVITY_PERMISSION_OVERRIDE_STRING_MAX) continue;
-    if (/[\u0000-\u001f\u007f]/.test(text)) continue;
-    if (seen.has(text)) continue;
-    seen.add(text);
-    out.push(text);
-    if (out.length >= ANTIGRAVITY_PERMISSION_OVERRIDE_MAX) break;
-  }
-  return out;
-}
-
 function sanitizeAntigravityPermissionDecision(decisionOrBehavior, message) {
   const source = typeof decisionOrBehavior === "string"
     ? { decision: decisionOrBehavior, reason: message }
@@ -193,12 +174,6 @@ function sanitizeAntigravityPermissionDecision(decisionOrBehavior, message) {
   if (reason && decision !== "allow") out.reason = reason;
   if (decision === "allow") out.allowTool = true;
   if (decision === "deny" && reason) out.denyReason = reason;
-  const permissionOverrides = normalizeAntigravityPermissionOverrides(
-    source.permissionOverrides || source.permission_overrides
-  );
-  if (decision !== "deny" && permissionOverrides.length) {
-    out.permissionOverrides = permissionOverrides;
-  }
   return out;
 }
 
@@ -1001,18 +976,10 @@ function maybeStartRemoteApproval(permEntry) {
     if (behavior === "no-decision") {
       sendAntigravityNoDecisionResponse(res, message || "fallback");
     } else {
-      const decision = behavior && typeof behavior === "object"
-        ? behavior
-        : (() => {
-          const out = {
-            behavior: behavior === "deny" ? "deny" : "allow",
-            message,
-          };
-          const permissionOverrides = normalizeAntigravityPermissionOverrides(permEntry.antigravityPermissionOverrides);
-          if (out.behavior === "allow" && permissionOverrides.length) out.permissionOverrides = permissionOverrides;
-          return out;
-        })();
-      sendAntigravityPermissionResponse(res, decision, message);
+      sendAntigravityPermissionResponse(res, {
+        behavior: behavior === "deny" ? "deny" : "allow",
+        message,
+      });
     }
     return;
   }
@@ -1550,7 +1517,6 @@ module.exports.__test = {
   shouldSuppressCodexNotifyBubble,
   sanitizeCodexPermissionDecision,
   buildCodexPermissionResponseBody,
-  normalizeAntigravityPermissionOverrides,
   sanitizeAntigravityPermissionDecision,
   buildAntigravityPermissionResponseBody,
   buildElicitationUpdatedInput,

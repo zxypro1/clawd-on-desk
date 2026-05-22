@@ -11,7 +11,6 @@ const {
 const {
   MAX_PERMISSION_BODY_BYTES,
   handlePermissionPost,
-  buildAntigravityPermissionOverrides,
   shouldBypassAntigravityBubble,
   shouldBypassCCBubble,
   shouldBypassCodexBubble,
@@ -148,61 +147,6 @@ describe("server-route-permission helpers", () => {
     assert.strictEqual(shouldBypassAntigravityBubble({
       isAgentPermissionsEnabled: (agentId) => agentId !== "antigravity-cli",
     }), true);
-  });
-
-  it("builds conservative Antigravity scoped permission overrides", () => {
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("run_command", { CommandLine: "npm test", Cwd: "/repo" }),
-      ["command(npm)", "command(npm test)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("Bash", { command: "Remove-Item test.md", Cwd: "D:/repo" }),
-      ["command(Remove-Item)", "command(Remove-Item test.md)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("view_file", { AbsolutePath: "/repo/package.json" }),
-      ["read_file(/repo/package.json)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("WRITE_TO_FILE", { TargetFile: "/repo/out.txt" }),
-      ["write_file(/repo/out.txt)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("replace_file_content", { TargetFile: "src/app.js", Cwd: "/repo" }),
-      ["write_file(/repo/src/app.js)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("Edit", { file_path: "src/app.js", Cwd: "/repo" }),
-      ["write_file(/repo/src/app.js)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("grep_search", { SearchPath: "/repo/src", Query: "TODO" }),
-      ["read_file(/repo/src)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("ask_permission", {
-        Action: "run command",
-        Target: "Remove-Item test.md",
-        Reason: "delete requested file",
-      }),
-      ["command(Remove-Item)", "command(Remove-Item test.md)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("ask_permission", {
-        Action: "write",
-        Target: "out.txt",
-        Cwd: "/repo",
-      }),
-      ["write_file(/repo/out.txt)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("ask_permission", { Target: "command(npm test)" }),
-      ["command(npm)", "command(npm test)"]
-    );
-    assert.deepStrictEqual(
-      buildAntigravityPermissionOverrides("run_command", { CommandLine: "npm test\nrm -rf ." }),
-      []
-    );
   });
 
 });
@@ -397,7 +341,7 @@ describe("server-route-permission POST", () => {
     assert.strictEqual(entry.sessionId, "antigravity:sid");
     assert.strictEqual(entry.toolName, "run_command");
     assert.strictEqual(entry.toolUseId, "tool-1");
-    assert.deepStrictEqual(entry.antigravityPermissionOverrides, ["command(npm)", "command(npm test)"]);
+    assert.strictEqual(entry.antigravityPermissionOverrides, undefined);
     assert.strictEqual(entry.agentId, "antigravity-cli");
     assert.strictEqual(entry.isAntigravity, true);
     assert.strictEqual(entry.sourcePid, 456);

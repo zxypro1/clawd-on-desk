@@ -135,33 +135,26 @@ describe("Codex permission response sanitizer", () => {
     assert.strictEqual(permission.__test.buildCodexPermissionResponseBody({ behavior: "ask" }), "{}");
   });
 
-  it("keeps Antigravity allow/ask decisions and sanitizes overrides", () => {
+  it("keeps Antigravity allow/ask decisions and drops permissionOverrides", () => {
     const permission = loadPermissionWithElectron();
     const body = permission.__test.buildAntigravityPermissionResponseBody({
       decision: "force_ask",
       reason: "Review natively",
-      permissionOverrides: [
-        "command(npm test)",
-        "command(npm test)",
-        "bad\nrule",
-        "x".repeat(241),
-      ],
+      permissionOverrides: ["command(npm test)"],
     });
     const parsed = JSON.parse(body);
 
     assert.deepStrictEqual(parsed, {
       decision: "force_ask",
       reason: "Review natively",
-      permissionOverrides: ["command(npm test)"],
     });
     const allowBody = permission.__test.buildAntigravityPermissionResponseBody({
       decision: "allow",
-      permissionOverrides: ["command(Remove-Item test.md)", "bad\nrule"],
+      permissionOverrides: ["command(Remove-Item test.md)"],
     });
     assert.deepStrictEqual(JSON.parse(allowBody), {
       decision: "allow",
       allowTool: true,
-      permissionOverrides: ["command(Remove-Item test.md)"],
     });
     assert.strictEqual(permission.__test.buildAntigravityPermissionResponseBody({ decision: "maybe" }), "{}");
   });
@@ -336,7 +329,6 @@ describe("Codex permission response sanitizer", () => {
         createdAt: Date.now(),
         agentId: "antigravity-cli",
         isAntigravity: true,
-        antigravityPermissionOverrides: ["command(npm test)"],
       });
 
       api.handleDecide({ sender: { __window: bubble } }, behavior);
@@ -347,10 +339,7 @@ describe("Codex permission response sanitizer", () => {
       if (behavior === "allow") {
         assert.strictEqual(parsed.allowTool, true);
       }
-      assert.deepStrictEqual(
-        parsed.permissionOverrides,
-        behavior === "allow" ? ["command(npm test)"] : undefined
-      );
+      assert.strictEqual(parsed.permissionOverrides, undefined);
       assert.strictEqual(api.pendingPermissions.length, 0);
     }
   });

@@ -46,7 +46,7 @@ function setSessionTag(data) {
   }
 }
 
-function formatDetail(name, input) {
+function formatDetail(name, input, options = {}) {
   if (!input || typeof input !== "object") return "";
   if (typeof input.description === "string" && input.description.trim()) return truncate(input.description.trim(), 120);
   if (name === "Bash" && input.command) return truncate(input.command, 120);
@@ -54,8 +54,10 @@ function formatDetail(name, input) {
     return truncate(input.file_path, 120);
   if ((name === "Glob" || name === "Grep") && input.pattern)
     return truncate(input.pattern, 120);
-  const antigravityDetail = formatAntigravityDetail(name, input);
-  if (antigravityDetail) return antigravityDetail;
+  if (options.isAntigravity) {
+    const antigravityDetail = formatAntigravityDetail(name, input);
+    if (antigravityDetail) return antigravityDetail;
+  }
   for (const v of Object.values(input)) {
     if (typeof v === "string" && v.trim()) return truncate(v.trim(), 100);
   }
@@ -72,7 +74,7 @@ function firstStringValue(input, names) {
 
 function formatAntigravityDetail(name, input) {
   const toolName = typeof name === "string" ? name.trim().toLowerCase() : "";
-  if (!toolName.includes("_") && !Object.prototype.hasOwnProperty.call(input, "CommandLine")) return "";
+  if (!toolName) return "";
 
   if (toolName === "run_command" || toolName === "bash" || toolName === "shell") {
     return truncate(firstStringValue(input, ["CommandLine", "command", "Command", "cmd"]), 160);
@@ -869,7 +871,7 @@ function show(data) {
   toolPill.setAttribute("data-tool", data.toolName || "");
 
   // Command block (textContent only — never innerHTML)
-  commandBlock.textContent = formatDetail(data.toolName, data.toolInput);
+  commandBlock.textContent = formatDetail(data.toolName, data.toolInput, { isAntigravity: !!data.isAntigravity });
 
   // Button labels
   btnAllow.textContent = isPlanReview ? bubbleText(data.lang, "approve") : bubbleText(data.lang, "allow");

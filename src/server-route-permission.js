@@ -15,132 +15,6 @@ const {
 } = require("./server-permission-utils");
 
 const MAX_PERMISSION_BODY_BYTES = 524288;
-const ANTIGRAVITY_PERMISSION_OVERRIDE_STRING_MAX = 240;
-
-function normalizeAntigravityPermissionOverride(value) {
-  if (typeof value !== "string") return null;
-  const text = value.trim();
-  if (!text || text.length > ANTIGRAVITY_PERMISSION_OVERRIDE_STRING_MAX) return null;
-  if (/[\u0000-\u001f\u007f]/.test(text)) return null;
-  return text;
-}
-
-function firstStringField(input, names) {
-  if (!input || typeof input !== "object") return null;
-  for (const name of names) {
-    const value = input[name];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-function normalizeAntigravityToolName(toolName) {
-  return typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
-}
-
-function isAntigravityNativeCommandTool(toolName) {
-  const name = normalizeAntigravityToolName(toolName);
-  return name === "run_command" || name === "bash" || name === "shell";
-}
-
-function isAntigravityAbsolutePath(value) {
-  return typeof value === "string" && (
-    value.startsWith("/") ||
-    value.startsWith("\\\\") ||
-    /^[A-Za-z]:[\\/]/.test(value)
-  );
-}
-
-function joinAntigravityPath(cwd, target) {
-  const rawTarget = typeof target === "string" ? target.trim() : "";
-  if (!rawTarget || isAntigravityAbsolutePath(rawTarget)) return rawTarget;
-  const rawCwd = typeof cwd === "string" ? cwd.trim() : "";
-  if (!rawCwd) return rawTarget;
-  const sep = rawCwd.includes("\\") && !rawCwd.includes("/") ? "\\" : "/";
-  return `${rawCwd.replace(/[\\/]+$/, "")}${sep}${rawTarget.replace(/^[\\/]+/, "")}`;
-}
-
-function firstAntigravityPath(input, names) {
-  const value = firstStringField(input, names);
-  if (!value) return null;
-  return joinAntigravityPath(input && input.Cwd, value);
-}
-
-function splitAntigravityCommandRoot(command) {
-  const text = typeof command === "string" ? command.trim() : "";
-  if (!text) return "";
-  const withoutCall = text.startsWith("&") ? text.slice(1).trim() : text;
-  const quoted = withoutCall.match(/^"([^"]+)"/) || withoutCall.match(/^'([^']+)'/);
-  if (quoted) return quoted[1].trim();
-  const first = withoutCall.match(/^\S+/);
-  return first ? first[0].trim() : "";
-}
-
-function pushAntigravityCommandOverrides(rawOverrides, command) {
-  if (/[\u0000-\u001f\u007f]/.test(command)) return;
-  const root = splitAntigravityCommandRoot(command);
-  if (root && root !== command) rawOverrides.push(`command(${root})`);
-  if (command) rawOverrides.push(`command(${command})`);
-}
-
-function inferAskPermissionOverride(input) {
-  const target = firstStringField(input, ["Target", "target", "Permission", "permission"]);
-  if (!target) return null;
-  if (/^[a-z_]+\(.+\)$/.test(target)) return target;
-
-  const action = (firstStringField(input, ["Action", "action"]) || "").toLowerCase();
-  if (action.includes("read")) return `read_file(${joinAntigravityPath(input && input.Cwd, target)})`;
-  if (action.includes("write") || action.includes("edit")) {
-    return `write_file(${joinAntigravityPath(input && input.Cwd, target)})`;
-  }
-  if (action.includes("command") || action.includes("bash") || action.includes("shell") || action.includes("run")) return `command(${target})`;
-  return null;
-}
-
-function buildAntigravityPermissionOverrides(toolName, toolInput) {
-  const name = normalizeAntigravityToolName(toolName);
-  const input = toolInput && typeof toolInput === "object" ? toolInput : {};
-  const rawOverrides = [];
-
-  if (isAntigravityNativeCommandTool(name)) {
-    const command = firstStringField(input, ["CommandLine", "command", "Command", "cmd"]);
-    if (command) pushAntigravityCommandOverrides(rawOverrides, command);
-  } else if (name === "view_file" || name === "read") {
-    const filePath = firstAntigravityPath(input, ["AbsolutePath", "file_path", "path", "filePath", "FilePath"]);
-    if (filePath) rawOverrides.push(`read_file(${filePath})`);
-  } else if (
-    name === "write_to_file" ||
-    name === "replace_file_content" ||
-    name === "multi_replace_file_content" ||
-    name === "write" ||
-    name === "edit" ||
-    name === "multiedit"
-  ) {
-    const filePath = firstAntigravityPath(input, ["TargetFile", "AbsolutePath", "file_path", "path", "filePath", "FilePath"]);
-    if (filePath) rawOverrides.push(`write_file(${filePath})`);
-  } else if (name === "list_dir") {
-    const dirPath = firstAntigravityPath(input, ["DirectoryPath", "path", "directory"]);
-    if (dirPath) rawOverrides.push(`read_file(${dirPath})`);
-  } else if (name === "find_by_name") {
-    const searchPath = firstAntigravityPath(input, ["SearchDirectory", "DirectoryPath", "path"]);
-    if (searchPath) rawOverrides.push(`read_file(${searchPath})`);
-  } else if (name === "grep_search") {
-    const searchPath = firstAntigravityPath(input, ["SearchPath", "SearchDirectory", "DirectoryPath", "path"]);
-    if (searchPath) rawOverrides.push(`read_file(${searchPath})`);
-  } else if (name === "ask_permission") {
-    const override = inferAskPermissionOverride(input);
-    const commandMatch = override && override.match(/^command\((.+)\)$/);
-    if (commandMatch) {
-      pushAntigravityCommandOverrides(rawOverrides, commandMatch[1]);
-    } else if (override) {
-      rawOverrides.push(override);
-    }
-  }
-
-  return rawOverrides
-    .map(normalizeAntigravityPermissionOverride)
-    .filter(Boolean);
-}
 
 // ExitPlanMode (Plan Review) and AskUserQuestion (elicitation) happen to
 // travel through /permission, but they're UX flows — not approvals the
@@ -455,10 +329,6 @@ function handlePermissionPost(req, res, options) {
         const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "Unknown";
         const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
         const toolInput = truncateDeep(rawInput);
-        const antigravityOverrideInput = rawInput.Cwd || !data.cwd
-          ? rawInput
-          : { ...rawInput, Cwd: data.cwd };
-        const antigravityPermissionOverrides = buildAntigravityPermissionOverrides(toolName, antigravityOverrideInput);
         const sessionId = typeof data.session_id === "string" && data.session_id ? data.session_id : "antigravity:default";
         const toolUseId = normalizeHookToolUseId(
           data.tool_use_id ?? data.toolUseId ?? data.toolUseID
@@ -503,7 +373,6 @@ function handlePermissionPost(req, res, options) {
           toolInput,
           toolUseId,
           toolInputFingerprint,
-          antigravityPermissionOverrides,
           resolvedSuggestion: null,
           createdAt: Date.now(),
           agentId: "antigravity-cli",
@@ -922,6 +791,5 @@ module.exports = {
   sendCodexPermissionNoDecision,
   sendPiPermissionNoDecision,
   sendAntigravityPermissionNoDecision,
-  buildAntigravityPermissionOverrides,
   handlePermissionPost,
 };

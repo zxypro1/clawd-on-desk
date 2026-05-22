@@ -121,7 +121,6 @@ describe("Antigravity hook script", () => {
         postedPermissions.push(JSON.parse(body));
         callback(true, 23333, JSON.stringify({
           decision: "allow",
-          permissionOverrides: ["command(npm test)", "bad\nrule"],
         }), 200);
       },
     });
@@ -129,7 +128,6 @@ describe("Antigravity hook script", () => {
     assert.deepStrictEqual(JSON.parse(result.stdout), {
       decision: "allow",
       allowTool: true,
-      permissionOverrides: ["command(npm test)"],
     });
     assert.strictEqual(result.permissionPosted, true);
     assert.strictEqual(postedStates.length, 1);
@@ -161,14 +159,12 @@ describe("Antigravity hook script", () => {
       postState: (_body, _options, callback) => callback(true, 23333),
       postPermission: (_body, _options, callback) => callback(true, 23333, JSON.stringify({
         decision: "allow",
-        permissionOverrides: ["command(Remove-Item)"],
       }), 200),
     });
 
     assert.deepStrictEqual(JSON.parse(result.stdout), {
       decision: "allow",
       allowTool: true,
-      permissionOverrides: ["command(Remove-Item)"],
     });
 
     const entries = fs.readFileSync(debugFile, "utf8")
@@ -214,34 +210,27 @@ describe("Antigravity hook script", () => {
       JSON.parse(__test.sanitizeAntigravityPermissionOutput(JSON.stringify({
         decision: "force_ask",
         reason: "Review natively",
-        permissionOverrides: ["command(npm test)", "command(npm test)", "", "x".repeat(241)],
+        permissionOverrides: ["command(npm test)"],
       }), 200)),
       {
         decision: "force_ask",
         reason: "Review natively",
-        permissionOverrides: ["command(npm test)"],
       }
     );
     assert.deepStrictEqual(
       JSON.parse(__test.sanitizeAntigravityPermissionOutput(JSON.stringify({
         decision: "allow",
-        permissionOverrides: ["command(Remove-Item test.md)", "bad\nrule"],
+        permissionOverrides: ["command(Remove-Item test.md)"],
       }), 200)),
-      { decision: "allow", allowTool: true, permissionOverrides: ["command(Remove-Item test.md)"] }
+      { decision: "allow", allowTool: true }
     );
     assert.deepStrictEqual(
       JSON.parse(__test.sanitizeAntigravityPermissionOutput(JSON.stringify({
         decision: "ask",
         permissionOverrides: ["read_file(/repo/package.json)"],
       }), 200)),
-      { decision: "ask", permissionOverrides: ["read_file(/repo/package.json)"] }
+      { decision: "ask" }
     );
-    assert.deepStrictEqual(__test.normalizePermissionOverrides([
-      "command(npm test)",
-      "command(npm test)",
-      "bad\nrule",
-      123,
-    ]), ["command(npm test)"]);
   });
 
   it("maps PostToolUse errors to PostToolUseFailure", async () => {

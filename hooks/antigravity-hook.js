@@ -13,8 +13,6 @@ const TOOL_INPUT_STRING_MAX = 2000;
 const TOOL_INPUT_ARRAY_MAX = 32;
 const TOOL_INPUT_OBJECT_KEYS_MAX = 64;
 const TOOL_INPUT_DEPTH_MAX = 6;
-const PERMISSION_OVERRIDE_MAX = 8;
-const PERMISSION_OVERRIDE_STRING_MAX = 240;
 const DEBUG_STRING_MAX = 2000;
 const DEBUG_TOOL_INPUT_STRING_MAX = 240;
 const DEBUG_OBJECT_KEYS_MAX = 32;
@@ -130,23 +128,6 @@ function buildAntigravityNoDecisionOutput(reason) {
   const body = { decision: "ask" };
   if (typeof reason === "string" && reason.trim()) body.reason = reason.trim();
   return JSON.stringify(body);
-}
-
-function normalizePermissionOverrides(value) {
-  if (!Array.isArray(value)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const text = entry.trim();
-    if (!text || text.length > PERMISSION_OVERRIDE_STRING_MAX) continue;
-    if (/[\u0000-\u001f\u007f]/.test(text)) continue;
-    if (seen.has(text)) continue;
-    seen.add(text);
-    out.push(text);
-    if (out.length >= PERMISSION_OVERRIDE_MAX) break;
-  }
-  return out;
 }
 
 function stdoutForEvent(hookName) {
@@ -361,10 +342,6 @@ function sanitizeAntigravityPermissionOutput(rawBody, statusCode = 0) {
   if (reason && normalized !== "allow") out.reason = reason;
   if (normalized === "allow") out.allowTool = true;
   if (normalized === "deny" && reason) out.denyReason = reason;
-  const permissionOverrides = normalizePermissionOverrides(parsed.permissionOverrides);
-  if (normalized !== "deny" && permissionOverrides.length) {
-    out.permissionOverrides = permissionOverrides;
-  }
   return JSON.stringify(out);
 }
 
@@ -515,7 +492,6 @@ module.exports = {
     buildStateBody,
     buildPermissionBody,
     sanitizeAntigravityPermissionOutput,
-    normalizePermissionOverrides,
     isAntigravityHookDebugEnabled,
     getAntigravityHookDebugLogPath,
     normalizeDebugValue,
