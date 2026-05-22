@@ -4,7 +4,6 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
 const {
-  shouldBypassAntigravityBubble,
   shouldBypassCCBubble,
   shouldBypassOpencodeBubble,
   shouldBypassPiBubble,
@@ -125,25 +124,6 @@ describe("shouldBypassPiBubble", () => {
   });
 });
 
-describe("shouldBypassAntigravityBubble", () => {
-  it("does not bypass when the Antigravity sub-gate is on", () => {
-    assert.strictEqual(shouldBypassAntigravityBubble(makeCtx({ enabled: true })), false);
-  });
-
-  it("bypasses when the Antigravity sub-gate or split permission category is off", () => {
-    assert.strictEqual(shouldBypassAntigravityBubble(makeCtx({ enabled: false })), true);
-    assert.strictEqual(shouldBypassAntigravityBubble(makeCtx({ enabled: true, permissionBubblesEnabled: false })), true);
-  });
-
-  it("always queries the 'antigravity-cli' agent id regardless of call context", () => {
-    const calls = [];
-    const ctx = {
-      isAgentPermissionsEnabled: (id) => {
-        calls.push(id);
-        return false;
-      },
-    };
-    shouldBypassAntigravityBubble(ctx);
-    assert.deepStrictEqual(calls, ["antigravity-cli"]);
-  });
-});
+// D2: shouldBypassAntigravityBubble removed — antigravity is state-only,
+// no bubble path exists for the subgate to gate. Tests deleted with the
+// helper.

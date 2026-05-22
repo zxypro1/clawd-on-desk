@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { isAgentEnabled, isAgentPermissionsEnabled } = require("../agent-gate");
+const { getAgent } = require("../../agents/registry");
 const { findHookCommands } = require("../../hooks/json-utils");
 const { GEMINI_HOOK_EVENTS } = require("../../hooks/gemini-install");
 const { ANTIGRAVITY_HOOK_EVENTS, HOOK_GROUP_ID: ANTIGRAVITY_HOOK_GROUP_ID } = require("../../hooks/antigravity-install");
@@ -46,6 +47,14 @@ function readJson(fsImpl, filePath) {
 }
 
 function withAgentBubbleNote(detail, prefs, agentId) {
+  // State-only agents (capabilities.permissionApproval === false) never
+  // surface a Clawd bubble in the first place, so annotating them as
+  // "permission bubbles disabled" would be misleading. Antigravity (D2)
+  // and Hermes are the current examples.
+  const agent = getAgent(agentId);
+  if (agent && agent.capabilities && agent.capabilities.permissionApproval === false) {
+    return detail;
+  }
   if (!isAgentPermissionsEnabled(prefs, agentId)) {
     return {
       ...detail,

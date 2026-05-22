@@ -44,12 +44,6 @@ function shouldBypassPiBubble(ctx) {
   return !ctx.isAgentPermissionsEnabled("pi");
 }
 
-function shouldBypassAntigravityBubble(ctx) {
-  if (!arePermissionBubblesEnabled(ctx)) return true;
-  if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
-  return !ctx.isAgentPermissionsEnabled("antigravity-cli");
-}
-
 function shouldBypassCodexBubble(ctx) {
   if (!arePermissionBubblesEnabled(ctx)) return true;
   if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
@@ -106,30 +100,6 @@ function buildCodexPermissionSessionOptions(data) {
   if (model) options.model = model;
   if (codexOriginator) options.codexOriginator = codexOriginator;
   if (codexSource) options.codexSource = codexSource;
-  return options;
-}
-
-function buildAntigravityPermissionSessionOptions(data) {
-  const sourcePid = normalizePositiveInteger(data.source_pid);
-  const rawAgentPid = data.agent_pid ?? data.claude_pid ?? data.cursor_pid;
-  const agentPid = normalizePositiveInteger(rawAgentPid);
-  const pidChain = Array.isArray(data.pid_chain)
-    ? data.pid_chain.filter((n) => Number.isFinite(n) && n > 0).map((n) => Math.floor(n))
-    : null;
-  const options = {
-    agentId: "antigravity-cli",
-    hookSource: "antigravity-hook",
-  };
-
-  if (sourcePid) options.sourcePid = sourcePid;
-  if (agentPid) options.agentPid = agentPid;
-  if (pidChain && pidChain.length) options.pidChain = pidChain;
-  const cwd = normalizeString(data.cwd);
-  const host = normalizeString(data.host);
-  const platform = normalizeString(data.platform);
-  if (cwd) options.cwd = cwd;
-  if (host) options.host = host;
-  if (platform) options.platform = platform;
   return options;
 }
 
@@ -720,7 +690,6 @@ module.exports = {
   shouldBypassCodexBubble,
   shouldBypassOpencodeBubble,
   shouldBypassPiBubble,
-  shouldBypassAntigravityBubble,
   arePermissionBubblesEnabled,
   shouldInterceptCodexPermission,
   sendCodexPermissionNoDecision,

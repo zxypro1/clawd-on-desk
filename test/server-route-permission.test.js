@@ -11,7 +11,6 @@ const {
 const {
   MAX_PERMISSION_BODY_BYTES,
   handlePermissionPost,
-  shouldBypassAntigravityBubble,
   shouldBypassCCBubble,
   shouldBypassCodexBubble,
   shouldBypassOpencodeBubble,
@@ -142,10 +141,6 @@ describe("server-route-permission helpers", () => {
     assert.strictEqual(shouldBypassPiBubble({ hideBubbles: true }), true);
     assert.strictEqual(shouldBypassPiBubble({
       isAgentPermissionsEnabled: (agentId) => agentId !== "pi",
-    }), true);
-    assert.strictEqual(shouldBypassAntigravityBubble({ hideBubbles: true }), true);
-    assert.strictEqual(shouldBypassAntigravityBubble({
-      isAgentPermissionsEnabled: (agentId) => agentId !== "antigravity-cli",
     }), true);
   });
 
@@ -302,7 +297,11 @@ describe("server-route-permission POST", () => {
     assert.deepStrictEqual(res.ctx.pendingPermissions, []);
   });
 
-  it("returns no-decision when Antigravity permission subgate is disabled", async () => {
+  it("still returns 204 when Antigravity permission subgate is disabled (subgate has no effect on state-only flow)", async () => {
+    // D2: Antigravity is state-only. The permission subgate (per-agent
+    // bubble switch) no longer participates in any decision — kept here as
+    // a regression guard so a future Settings change cannot accidentally
+    // re-introduce a bubble path through the subgate.
     const res = await callPermissionPost(JSON.stringify({
       agent_id: "antigravity-cli",
       session_id: "antigravity:sid",
@@ -363,6 +362,9 @@ describe("server-route-permission POST", () => {
     assert.deepStrictEqual(res.ctx.calls.showPermissionBubble || [], []);
     assert.deepStrictEqual(res.ctx.calls.addPendingPermission || [], []);
     assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval || [], []);
+    assert.deepStrictEqual(res.ctx.calls.updateSession || [], []);
+    assert.deepStrictEqual(res.ctx.calls.removePendingPermission || [], []);
+    assert.deepStrictEqual(res.ctx.calls.sendPermissionResponse || [], []);
     assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["accepted"]);
   });
 

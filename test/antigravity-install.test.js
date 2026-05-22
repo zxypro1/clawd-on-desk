@@ -125,6 +125,39 @@ describe("Antigravity hook installer", () => {
     assert.ok(Array.isArray(group.Stop));
   });
 
+  it("strips a legacy PreToolUse entry even when 4 state hooks already match exactly (D2 migration count edge case)", () => {
+    // Non-intuitive path: every state-event entry is byte-identical to what
+    // registerAntigravityHooks would write, but the group also carries a
+    // legacy PreToolUse. Counts report added=0/updated=0/skipped=4 because
+    // ANTIGRAVITY_HOOK_EVENTS no longer includes PreToolUse and is not
+    // iterated for it; the overall group JSON still differs, so the writer
+    // overwrites the file and the orphan PreToolUse gets removed.
+    const homeDir = makeTempHome();
+    const configPath = path.join(homeDir, ".gemini", "config", "hooks.json");
+    // Seed by first running register so the 4 state events are canonical.
+    registerAntigravityHooks({ silent: true, homeDir, nodeBin: "/usr/local/bin/node" });
+    const canonical = readJson(configPath);
+    // Inject a legacy PreToolUse alongside the canonical state hooks.
+    canonical[HOOK_GROUP_ID].PreToolUse = [{
+      matcher: "*",
+      hooks: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'PreToolUse'", timeout: 600 }],
+    }];
+    fs.writeFileSync(configPath, JSON.stringify(canonical));
+
+    const result = registerAntigravityHooks({ silent: true, homeDir, nodeBin: "/usr/local/bin/node" });
+
+    assert.strictEqual(result.installed, true);
+    assert.strictEqual(result.added, 0);
+    assert.strictEqual(result.updated, 0);
+    assert.strictEqual(result.skipped, 4);
+    const group = readJson(configPath)[HOOK_GROUP_ID];
+    assert.strictEqual(group.PreToolUse, undefined, "legacy PreToolUse must be stripped");
+    assert.ok(Array.isArray(group.PreInvocation));
+    assert.ok(Array.isArray(group.PostToolUse));
+    assert.ok(Array.isArray(group.PostInvocation));
+    assert.ok(Array.isArray(group.Stop));
+  });
+
   it("strips a legacy PreToolUse entry on auto-sync (D2 migration)", () => {
     // Simulates a user who installed Clawd before the D2 decision. Their
     // hooks.json has a Clawd-owned PreToolUse entry. Next startup sync
