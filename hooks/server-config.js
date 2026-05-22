@@ -538,16 +538,21 @@ function extractAbsolutePathFromShellOutput(raw) {
   return null;
 }
 
+// Use path.win32.* explicitly throughout so resolveNodeBin behaves identically
+// when the test suite (or any caller) drives win32 logic from a Linux/macOS
+// host. The default `path` module follows the host platform, which on POSIX
+// treats `C:\Program Files\nodejs\node.exe` as a single filename — basename
+// returns the entire string and every Windows check silently misfires.
 const WINDOWS_NODE_BASENAMES = new Set(["node.exe", "node"]);
 
 function isWindowsNodeBasename(value) {
   return WINDOWS_NODE_BASENAMES.has(
-    path.basename(String(value || "")).toLowerCase()
+    path.win32.basename(String(value || "")).toLowerCase()
   );
 }
 
 function normalizeWindowsPathForMatch(value) {
-  return path.normalize(String(value || "")).replace(/\//g, "\\").toLowerCase();
+  return path.win32.normalize(String(value || "")).replace(/\//g, "\\").toLowerCase();
 }
 
 function isScoopShimPath(value) {
@@ -561,7 +566,7 @@ function isClawdOrElectronPath(value) {
   // Reject the packaged Electron host. Match by basename so we don't false-flag
   // a legitimate Node living under a parent folder whose name happens to
   // contain "Clawd" or "Electron".
-  const base = path.basename(norm);
+  const base = path.win32.basename(norm);
   return base.includes("clawd on desk") || base === "electron.exe";
 }
 
@@ -569,9 +574,10 @@ function validateWindowsNodeCandidate(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  // Accept drive letter (C:\...), UNC (\\server\share\...), and POSIX
-  // absolutes returned by mocks.
-  if (!path.isAbsolute(trimmed) && !/^[A-Za-z]:[\\/]/.test(trimmed) && !trimmed.startsWith("\\\\")) {
+  // Accept drive letter (C:\...), UNC (\\server\share\...). path.win32.isAbsolute
+  // already covers both; the regex fallback exists only as a belt-and-braces
+  // guard if a future caller hands in a hand-built path object.
+  if (!path.win32.isAbsolute(trimmed) && !/^[A-Za-z]:[\\/]/.test(trimmed) && !trimmed.startsWith("\\\\")) {
     return null;
   }
   if (!isWindowsNodeBasename(trimmed)) return null;
@@ -584,17 +590,17 @@ function getWindowsCommonNodePaths(options = {}) {
   const env = options.env || process.env;
   const probes = [];
   if (env.ProgramFiles) {
-    probes.push(path.join(env.ProgramFiles, "nodejs", "node.exe"));
+    probes.push(path.win32.join(env.ProgramFiles, "nodejs", "node.exe"));
   }
   if (env["ProgramFiles(x86)"]) {
-    probes.push(path.join(env["ProgramFiles(x86)"], "nodejs", "node.exe"));
+    probes.push(path.win32.join(env["ProgramFiles(x86)"], "nodejs", "node.exe"));
   }
   if (env.LOCALAPPDATA) {
-    probes.push(path.join(env.LOCALAPPDATA, "Programs", "nodejs", "node.exe"));
-    probes.push(path.join(env.LOCALAPPDATA, "Volta", "bin", "node.exe"));
+    probes.push(path.win32.join(env.LOCALAPPDATA, "Programs", "nodejs", "node.exe"));
+    probes.push(path.win32.join(env.LOCALAPPDATA, "Volta", "bin", "node.exe"));
   }
   if (env.USERPROFILE) {
-    probes.push(path.join(env.USERPROFILE, "scoop", "apps", "nodejs", "current", "node.exe"));
+    probes.push(path.win32.join(env.USERPROFILE, "scoop", "apps", "nodejs", "current", "node.exe"));
   }
   return probes;
 }
@@ -602,7 +608,7 @@ function getWindowsCommonNodePaths(options = {}) {
 function windowsWhereExePath(options = {}) {
   const systemRoot = (options.env || process.env).SystemRoot;
   return systemRoot
-    ? path.join(systemRoot, "System32", "where.exe")
+    ? path.win32.join(systemRoot, "System32", "where.exe")
     : "where.exe";
 }
 

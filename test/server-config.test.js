@@ -213,6 +213,37 @@ describe("server-config helpers", () => {
       assert.strictEqual(v("C:\\bin\\python.exe"), null);
     });
 
+    it("validateWindowsNodeCandidate parses Windows paths regardless of host platform", () => {
+      // Regression: an earlier draft used the default `path` module, which on
+      // POSIX treats `C:\Program Files\nodejs\node.exe` as one big filename.
+      // path.basename returned the whole string, isWindowsNodeBasename failed,
+      // and every Windows resolver test silently passed only because it ran on
+      // a Windows host. Force the win32 path semantics by using path.win32.*
+      // everywhere — this assertion fails on Linux/macOS if anyone reverts.
+      const v = serverConfig.validateWindowsNodeCandidate;
+      assert.strictEqual(v("C:\\Program Files\\nodejs\\node.exe"), "C:\\Program Files\\nodejs\\node.exe");
+      assert.strictEqual(v("\\\\fileserver\\share\\node.exe"), "\\\\fileserver\\share\\node.exe");
+    });
+
+    it("getWindowsCommonNodePaths emits backslash-joined Windows paths on any host", () => {
+      // Same risk class as the validator regression: path.join on POSIX would
+      // splice the env var with forward slashes, producing paths that never
+      // exist on Windows and never match the scoop-shim/normalize checks.
+      const result = serverConfig.resolveNodeBin({
+        platform: "win32",
+        env: { ProgramFiles: "C:\\Program Files" },
+        execPath: "C:\\Program Files\\Clawd on Desk\\Clawd on Desk.exe",
+        execFileSync() { throw new Error("where failed"); },
+        accessSync(candidate) {
+          assert.ok(candidate.includes("\\"), `expected backslash in ${candidate}`);
+          assert.ok(!candidate.includes("/"), `expected no forward slash in ${candidate}`);
+          if (candidate === "C:\\Program Files\\nodejs\\node.exe") return;
+          throw new Error("ENOENT");
+        },
+      });
+      assert.strictEqual(result, "C:\\Program Files\\nodejs\\node.exe");
+    });
+
     it("async resolver mirrors sync (execPath, where.exe, common paths, scoop shim skip)", async () => {
       const realNode = "C:\\Program Files\\nodejs\\node.exe";
       const shim = "C:\\Users\\tester\\scoop\\shims\\node.exe";
