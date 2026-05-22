@@ -76,13 +76,19 @@ describe("prefs.getDefaults", () => {
 
   it("seeds permission-capable agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "antigravity-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
+    // Antigravity intentionally excluded — D2 makes it state-only, no bubble.
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
       assert.strictEqual(
         d.agents[id].permissionsEnabled,
         true,
         `${id} should default permissionsEnabled`
       );
     }
+    assert.strictEqual(
+      d.agents["antigravity-cli"].permissionsEnabled,
+      false,
+      "antigravity-cli is state-only (D2), permissionsEnabled must default to false"
+    );
     assert.strictEqual(
       Object.prototype.hasOwnProperty.call(d.agents.hermes, "permissionsEnabled"),
       false,

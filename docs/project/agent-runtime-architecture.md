@@ -130,7 +130,7 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 - `agents/copilot-cli.js` — Copilot CLI camelCase 事件映射
 - `agents/cursor-agent.js` — Cursor Agent（hooks.json）事件映射
 - `agents/gemini-cli.js` — Gemini CLI hook 事件映射
-- `agents/antigravity-cli.js` — Antigravity CLI (agy) hook 事件映射 + 实验权限气泡
+- `agents/antigravity-cli.js` — Antigravity CLI (agy) hook 事件映射（state-only，无权限气泡）
 - `agents/kimi-cli.js` — Kimi Code CLI（Kimi-CLI）hook 事件映射 + permission 分类策略
 - `agents/kiro-cli.js` — Kiro CLI 事件映射（camelCase），无 HTTP hook / 无权限 / 无 subagent
 - `agents/codebuddy.js` — CodeBuddy 事件映射（PascalCase，Claude Code 兼容），支持权限

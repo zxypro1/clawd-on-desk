@@ -108,14 +108,54 @@ describe("Antigravity hook installer", () => {
     assert.ok(hooks[HOOK_GROUP_ID]);
   });
 
-  it("preserves a manually disabled Clawd hook group", () => {
+  it("preserves a manually disabled Clawd hook group (enabled:false carries over)", () => {
     const homeDir = makeTempHome();
     const configPath = path.join(homeDir, ".gemini", "config", "hooks.json");
     fs.writeFileSync(configPath, JSON.stringify({ [HOOK_GROUP_ID]: { enabled: false } }));
 
     registerAntigravityHooks({ silent: true, homeDir, nodeBin: "/usr/local/bin/node" });
 
-    assert.strictEqual(readJson(configPath)[HOOK_GROUP_ID].enabled, false);
+    const group = readJson(configPath)[HOOK_GROUP_ID];
+    assert.strictEqual(group.enabled, false);
+    // The flag must carry over, AND the 4 state-only events must still be
+    // written so re-enabling later does not require manual hook authoring.
+    assert.ok(Array.isArray(group.PreInvocation));
+    assert.ok(Array.isArray(group.PostToolUse));
+    assert.ok(Array.isArray(group.PostInvocation));
+    assert.ok(Array.isArray(group.Stop));
+  });
+
+  it("strips a legacy PreToolUse entry on auto-sync (D2 migration)", () => {
+    // Simulates a user who installed Clawd before the D2 decision. Their
+    // hooks.json has a Clawd-owned PreToolUse entry. Next startup sync
+    // must rewrite the clawd group to the new 4-event shape, removing
+    // the orphan PreToolUse without manual action.
+    const homeDir = makeTempHome();
+    const configPath = path.join(homeDir, ".gemini", "config", "hooks.json");
+    fs.writeFileSync(configPath, JSON.stringify({
+      [HOOK_GROUP_ID]: {
+        PreInvocation: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'PreInvocation'", timeout: 10 }],
+        PreToolUse: [{
+          matcher: "*",
+          hooks: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'PreToolUse'", timeout: 600 }],
+        }],
+        PostToolUse: [{
+          matcher: "*",
+          hooks: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'PostToolUse'", timeout: 10 }],
+        }],
+        PostInvocation: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'PostInvocation'", timeout: 10 }],
+        Stop: [{ type: "command", command: "& 'node' 'X/antigravity-hook.js' 'Stop'", timeout: 10 }],
+      },
+    }));
+
+    registerAntigravityHooks({ silent: true, homeDir, nodeBin: "/usr/local/bin/node" });
+
+    const group = readJson(configPath)[HOOK_GROUP_ID];
+    assert.strictEqual(group.PreToolUse, undefined, "legacy PreToolUse must be removed");
+    assert.ok(Array.isArray(group.PreInvocation));
+    assert.ok(Array.isArray(group.PostToolUse));
+    assert.ok(Array.isArray(group.PostInvocation));
+    assert.ok(Array.isArray(group.Stop));
   });
 
   it("builds Windows PowerShell bridge commands with the event argv", () => {

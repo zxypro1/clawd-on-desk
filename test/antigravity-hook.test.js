@@ -101,7 +101,10 @@ describe("Antigravity hook script", () => {
     });
   });
 
-  it("uses Clawd permission allow output for PreToolUse when a bubble resolves", async () => {
+  it("falls back to ask when Clawd server returns 204 for a stray PreToolUse", async () => {
+    // D2: server hard-blocks antigravity PreToolUse with 204. Hook script
+    // should then emit decision:"ask" so agy's native menu takes over.
+    // This mirrors the production state-only contract.
     const postedStates = [];
     const postedPermissions = [];
     const result = await __test.sendHookEvent({
@@ -119,20 +122,13 @@ describe("Antigravity hook script", () => {
       },
       postPermission: (body, _options, callback) => {
         postedPermissions.push(JSON.parse(body));
-        callback(true, 23333, JSON.stringify({
-          decision: "allow",
-        }), 200);
+        callback(true, 23333, "", 204);
       },
     });
 
-    assert.deepStrictEqual(JSON.parse(result.stdout), {
-      decision: "allow",
-      allowTool: true,
-    });
-    assert.strictEqual(result.permissionPosted, true);
-    assert.strictEqual(postedStates.length, 1);
+    assert.deepStrictEqual(JSON.parse(result.stdout), { decision: "ask" });
+    assert.strictEqual(result.permissionStatusCode, 204);
     assert.strictEqual(postedStates[0].state, "working");
-    assert.strictEqual(postedPermissions.length, 1);
     assert.strictEqual(postedPermissions[0].agent_id, "antigravity-cli");
     assert.strictEqual(postedPermissions[0].tool_name, "run_command");
   });
