@@ -85,6 +85,8 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   checkForUpdates: () => ipcRenderer.invoke("settings:check-for-updates"),
   getHardwareBuddyStatus: () => ipcRenderer.invoke("settings:get-hardware-buddy-status"),
   testHardwareBuddyApproval: () => ipcRenderer.invoke("settings:test-hardware-buddy-approval"),
+  getQuickCommandPresets: () => ipcRenderer.invoke("settings:get-quick-command-presets"),
+  sendQuickCommand: (payload) => ipcRenderer.invoke("settings:send-quick-command", payload),
   openExternal: (url) => ipcRenderer.invoke("settings:open-external", url),
   listThemes: () => ipcRenderer.invoke("settings:list-themes"),
   openUserThemesDir: () => ipcRenderer.invoke("settings:open-user-themes-dir"),

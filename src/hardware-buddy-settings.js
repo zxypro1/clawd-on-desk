@@ -6,6 +6,7 @@ const DEFAULT_HARDWARE_BUDDY_SETTINGS = Object.freeze({
   address: "",
   namePrefix: "Clawstick",
   permissionsEnabled: false,
+  quickCommandsEnabled: false,
 });
 
 const HARDWARE_BUDDY_BACKENDS = Object.freeze(["bleak", "fake"]);
@@ -28,6 +29,7 @@ function normalizeHardwareBuddySettings(value, defaults = DEFAULT_HARDWARE_BUDDY
     address: cleanString(input.address, 120),
     namePrefix: cleanString(input.namePrefix, 40) || defaults.namePrefix,
     permissionsEnabled: input.permissionsEnabled === true,
+    quickCommandsEnabled: input.quickCommandsEnabled === true,
   };
 }
 
@@ -51,6 +53,9 @@ function validateHardwareBuddySettings(value) {
   if (typeof value.permissionsEnabled !== "boolean") {
     return { status: "error", message: "hardwareBuddy.permissionsEnabled must be a boolean" };
   }
+  if (typeof value.quickCommandsEnabled !== "boolean") {
+    return { status: "error", message: "hardwareBuddy.quickCommandsEnabled must be a boolean" };
+  }
   return { status: "ok" };
 }
 
@@ -61,7 +66,8 @@ function hardwareBuddySettingsEqual(a, b) {
     && left.backend === right.backend
     && left.address === right.address
     && left.namePrefix === right.namePrefix
-    && left.permissionsEnabled === right.permissionsEnabled;
+    && left.permissionsEnabled === right.permissionsEnabled
+    && left.quickCommandsEnabled === right.quickCommandsEnabled;
 }
 
 module.exports = {

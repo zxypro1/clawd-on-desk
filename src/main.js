@@ -1996,6 +1996,12 @@ registerSettingsIpc({
     ? hardwareBuddyAdapter.getStatus()
     : null),
   testHardwareBuddyApproval: () => sendHardwareBuddyTestApproval(),
+  getQuickCommandPresets: () => hardwareBuddyAdapter && typeof hardwareBuddyAdapter.getQuickCommandPresets === "function"
+    ? hardwareBuddyAdapter.getQuickCommandPresets()
+    : { enabled: false, presets: [] },
+  sendQuickCommand: (payload) => hardwareBuddyAdapter && typeof hardwareBuddyAdapter.createQuickCommand === "function"
+    ? hardwareBuddyAdapter.createQuickCommand(payload)
+    : { status: "error", code: "quick_commands_unavailable", message: "Quick Commands are unavailable" },
   checkForUpdates,
   aboutHeroSvgPath: path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg"),
 });

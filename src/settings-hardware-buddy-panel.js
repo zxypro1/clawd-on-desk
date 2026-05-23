@@ -37,6 +37,8 @@
           "hardwareBuddyPermissionsDesc",
           { disabled: !getHardwareBuddyConfig(state).enabled }
         ),
+        buildHardwareBuddySwitchRow(core, "quickCommandsEnabled", "hardwareBuddyQuickCommands", "hardwareBuddyQuickCommandsDesc"),
+        buildQuickCommandPresetRow(core),
         buildHardwareBuddyTestRow(core),
       ])],
     });
@@ -55,6 +57,7 @@
       address: typeof current.address === "string" ? current.address : "",
       namePrefix: typeof current.namePrefix === "string" && current.namePrefix.trim() ? current.namePrefix : DEFAULT_NAME_PREFIX,
       permissionsEnabled: current.permissionsEnabled === true,
+      quickCommandsEnabled: current.quickCommandsEnabled === true,
     };
   }
 
@@ -76,9 +79,27 @@
         requestActiveTabRender();
       }).catch(() => {});
     }
+    if (window.settingsAPI && typeof window.settingsAPI.getQuickCommandPresets === "function") {
+      runtime.quickCommandPresetsLoading = true;
+      window.settingsAPI.getQuickCommandPresets().then((payload) => {
+        runtime.quickCommandPresetsLoading = false;
+        runtime.quickCommandPresets = payload || { enabled: false, presets: [] };
+        requestActiveTabRender();
+      }).catch(() => {
+        runtime.quickCommandPresetsLoading = false;
+        runtime.quickCommandPresets = { enabled: false, presets: [] };
+        requestActiveTabRender();
+      });
+    }
     if (window.settingsAPI && typeof window.settingsAPI.onHardwareBuddyStatusChanged === "function") {
       window.settingsAPI.onHardwareBuddyStatusChanged((status) => {
         runtime.hardwareBuddyStatus = status || null;
+        if (status && status.quickCommands) {
+          runtime.quickCommandPresets = {
+            ...(runtime.quickCommandPresets || { presets: [] }),
+            enabled: status.quickCommands.enabled === true,
+          };
+        }
         requestActiveTabRender();
       });
     }
@@ -314,6 +335,108 @@
       });
     });
     return row;
+  }
+
+  function getQuickCommandPresetState(core) {
+    const runtime = core.runtime || {};
+    const payload = runtime.quickCommandPresets && typeof runtime.quickCommandPresets === "object"
+      ? runtime.quickCommandPresets
+      : { enabled: false, presets: [] };
+    return {
+      enabled: payload.enabled === true,
+      presets: Array.isArray(payload.presets) ? payload.presets : [],
+      loading: runtime.quickCommandPresetsLoading === true,
+    };
+  }
+
+  function getQuickCommandPendingIds(core) {
+    const runtime = core.runtime || {};
+    if (!(runtime.quickCommandPendingIds instanceof Set)) {
+      runtime.quickCommandPendingIds = new Set();
+    }
+    return runtime.quickCommandPendingIds;
+  }
+
+  function buildQuickCommandPresetRow(core) {
+    const config = getHardwareBuddyConfig(core.state);
+    const presetState = getQuickCommandPresetState(core);
+    const pendingIds = getQuickCommandPendingIds(core);
+    const canSend = config.quickCommandsEnabled
+      && presetState.enabled
+      && window.settingsAPI
+      && typeof window.settingsAPI.sendQuickCommand === "function";
+    const row = document.createElement("div");
+    row.className = "row hardware-buddy-quick-command-row";
+    row.innerHTML =
+      `<div class="row-text">` +
+        `<span class="row-label"></span>` +
+        `<span class="row-desc"></span>` +
+      `</div>` +
+      `<div class="row-control hardware-buddy-quick-command-control"></div>`;
+    row.querySelector(".row-label").textContent = t(core, "hardwareBuddyQuickCommandPresets");
+    row.querySelector(".row-desc").textContent = quickCommandPresetDetail(core, config, presetState);
+    const control = row.querySelector(".hardware-buddy-quick-command-control");
+    if (!presetState.presets.length) {
+      const empty = document.createElement("span");
+      empty.className = "hardware-buddy-quick-command-empty";
+      empty.textContent = t(core, presetState.loading ? "hardwareBuddyQuickCommandsLoading" : "hardwareBuddyQuickCommandsUnavailable");
+      control.appendChild(empty);
+      return row;
+    }
+    for (const preset of presetState.presets) {
+      if (!preset || typeof preset.id !== "string" || typeof preset.label !== "string") continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "soft-btn hardware-buddy-quick-command-button";
+      button.textContent = preset.label;
+      const pending = pendingIds.has(preset.id);
+      button.disabled = !canSend || pending;
+      if (pending) button.classList.add("pending");
+      button.addEventListener("click", () => {
+        if (button.disabled) return;
+        sendQuickCommand(core, preset.id, button);
+      });
+      control.appendChild(button);
+    }
+    return row;
+  }
+
+  function quickCommandPresetDetail(core, config, presetState) {
+    if (!config.quickCommandsEnabled) return t(core, "hardwareBuddyQuickCommandsDisabled");
+    if (presetState.loading) return t(core, "hardwareBuddyQuickCommandsLoading");
+    if (!presetState.enabled) return t(core, "hardwareBuddyQuickCommandsUnavailable");
+    return t(core, "hardwareBuddyQuickCommandPresetsDesc");
+  }
+
+  function quickCommandClientRequestId(id) {
+    const suffix = Math.random().toString(36).slice(2, 10);
+    return `clawd-settings-${id}-${Date.now()}-${suffix}`;
+  }
+
+  function sendQuickCommand(core, id, button) {
+    const pendingIds = getQuickCommandPendingIds(core);
+    if (pendingIds.has(id)) return;
+    pendingIds.add(id);
+    button.disabled = true;
+    button.classList.add("pending");
+    window.settingsAPI.sendQuickCommand({
+      id,
+      clientRequestId: quickCommandClientRequestId(id),
+    }).then((result) => {
+      if (result && result.status === "ok") {
+        core.ops.showToast(t(core, "hardwareBuddyQuickCommandSent"), { error: false });
+      } else {
+        const msg = (result && result.message) || "unknown error";
+        core.ops.showToast(t(core, "hardwareBuddyQuickCommandFailed") + msg, { error: true });
+      }
+    }).catch((err) => {
+      const msg = err && err.message ? err.message : "unknown error";
+      core.ops.showToast(t(core, "hardwareBuddyQuickCommandFailed") + msg, { error: true });
+    }).finally(() => {
+      pendingIds.delete(id);
+      button.classList.remove("pending");
+      core.ops.requestRender({ content: true });
+    });
   }
 
   function buildHardwareBuddySwitchRow(core, field, labelKey, descKey, options = {}) {

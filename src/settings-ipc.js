@@ -128,6 +128,15 @@ function registerSettingsIpc(options = {}) {
     status: "error",
     message: "Hardware Buddy test approval is unavailable",
   }));
+  const getQuickCommandPresets = options.getQuickCommandPresets || (() => ({
+    enabled: false,
+    presets: [],
+  }));
+  const sendQuickCommand = options.sendQuickCommand || (() => ({
+    status: "error",
+    code: "quick_commands_unavailable",
+    message: "Quick Commands are unavailable",
+  }));
   const now = options.now || (() => Date.now());
   const aboutHeroSvgPath = options.aboutHeroSvgPath
     || path.join(__dirname, "..", "assets", "svg", "clawd-about-hero.svg");
@@ -136,6 +145,14 @@ function registerSettingsIpc(options = {}) {
   function handle(channel, listener) {
     ipcMain.handle(channel, listener);
     disposers.push(() => ipcMain.removeHandler(channel));
+  }
+
+  function sanitizeQuickCommandPayload(payload) {
+    const object = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+    return {
+      id: object.id,
+      clientRequestId: object.clientRequestId,
+    };
   }
 
   function getDialogParent(event) {
@@ -395,6 +412,8 @@ function registerSettingsIpc(options = {}) {
 
   handle("settings:get-hardware-buddy-status", () => getHardwareBuddyStatus());
   handle("settings:test-hardware-buddy-approval", () => testHardwareBuddyApproval());
+  handle("settings:get-quick-command-presets", () => getQuickCommandPresets());
+  handle("settings:send-quick-command", (_event, payload) => sendQuickCommand(sanitizeQuickCommandPayload(payload)));
 
   handle("settings:open-external", async (_event, url) => {
     if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {

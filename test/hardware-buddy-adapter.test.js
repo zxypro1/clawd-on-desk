@@ -554,6 +554,71 @@ describe("hardware buddy adapter", () => {
     assert.deepStrictEqual(sidecar.connects, [{ address: "00:4B:12:A1:9E:A6" }]);
   });
 
+  it("keeps Quick Commands disabled by default", () => {
+    resetFakes();
+    const adapter = createHardwareBuddyAdapter({ env: {} });
+
+    assert.deepStrictEqual(adapter.getQuickCommandPresets(), {
+      enabled: false,
+      presets: adapter.getQuickCommandPresets().presets,
+    });
+    assert.equal(
+      adapter.getQuickCommandPresets().presets.some((preset) => preset.id === "stop" || preset.label === "停"),
+      false
+    );
+    assert.deepStrictEqual(adapter.createQuickCommand({
+      id: "plan_first",
+      clientRequestId: "qc-disabled-1",
+    }), {
+      status: "error",
+      code: "quick_commands_disabled",
+      message: "Quick Commands are disabled.",
+    });
+  });
+
+  it("buffers validated Quick Commands when explicitly enabled without starting BLE", () => {
+    resetFakes();
+    const settings = {
+      enabled: false,
+      backend: "fake",
+      address: "",
+      namePrefix: "Claude",
+      permissionsEnabled: false,
+      quickCommandsEnabled: true,
+    };
+    const adapter = createHardwareBuddyAdapter({
+      settings,
+      env: {},
+      now: () => 1234,
+    });
+
+    assert.strictEqual(adapter.start(), false);
+    assert.strictEqual(FakeSidecarClient.instances.length, 0);
+    assert.strictEqual(adapter.getQuickCommandPresets().enabled, true);
+
+    const result = adapter.createQuickCommand({
+      id: "plan_first",
+      clientRequestId: "qc-plan-1",
+    });
+    assert.strictEqual(result.status, "ok");
+    assert.strictEqual(result.duplicate, false);
+    assert.strictEqual(result.quickCommand.id, "plan_first");
+    assert.strictEqual(result.quickCommand.target.resolution, "defer_to_adapter");
+    assert.strictEqual(result.quickCommand.createdAt, 1234);
+
+    const duplicate = adapter.createQuickCommand({
+      id: "plan_first",
+      clientRequestId: "qc-plan-1",
+    });
+    assert.strictEqual(duplicate.status, "ok");
+    assert.strictEqual(duplicate.duplicate, true);
+    assert.strictEqual(duplicate.quickCommand.seq, result.quickCommand.seq);
+
+    assert.deepStrictEqual(adapter.listQuickCommands({ after: 0 }).items.map((item) => item.id), ["plan_first"]);
+    assert.strictEqual(adapter.getStatus().quickCommands.enabled, true);
+    assert.strictEqual(adapter.getStatus().quickCommands.sink.size, 1);
+  });
+
   it("rebuilds the controller without reconnecting when permission opt-in changes", () => {
     resetFakes();
     const fakeTimers = createFakeTimers();

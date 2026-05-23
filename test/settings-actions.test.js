@@ -232,6 +232,7 @@ describe("updateRegistry pure-data validators", () => {
       address: "00:4B:12:A1:9E:A6",
       namePrefix: "Claude",
       permissionsEnabled: false,
+      quickCommandsEnabled: true,
     }).status, "ok");
     assert.strictEqual(updateRegistry.hardwareBuddy({ enabled: true }).status, "error");
     assert.strictEqual(updateRegistry.hardwareBuddy({
@@ -240,6 +241,7 @@ describe("updateRegistry pure-data validators", () => {
       address: "",
       namePrefix: "Claude",
       permissionsEnabled: false,
+      quickCommandsEnabled: false,
     }).status, "error");
   });
 

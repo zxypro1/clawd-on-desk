@@ -125,6 +125,7 @@ describe("prefs.getDefaults", () => {
       address: "",
       namePrefix: "Clawstick",
       permissionsEnabled: false,
+      quickCommandsEnabled: false,
     });
   });
 });
@@ -591,6 +592,7 @@ describe("prefs.validate", () => {
         address: "  FAKE:CLAWSTICK  ",
         namePrefix: "  Claude  ",
         permissionsEnabled: true,
+        quickCommandsEnabled: true,
       },
     });
     assert.deepStrictEqual(v.hardwareBuddy, {
@@ -599,6 +601,7 @@ describe("prefs.validate", () => {
       address: "FAKE:CLAWSTICK",
       namePrefix: "Claude",
       permissionsEnabled: true,
+      quickCommandsEnabled: true,
     });
     assert.deepStrictEqual(prefs.validate({ hardwareBuddy: "bad" }).hardwareBuddy, prefs.getDefaults().hardwareBuddy);
   });
