@@ -14,7 +14,6 @@ const {
   shouldBypassCCBubble,
   shouldBypassCodexBubble,
   shouldBypassOpencodeBubble,
-  shouldBypassPiBubble,
 } = require("../src/server-route-permission");
 
 function makeReq(body) {
@@ -137,10 +136,6 @@ describe("server-route-permission helpers", () => {
     }), true);
     assert.strictEqual(shouldBypassOpencodeBubble({
       isAgentPermissionsEnabled: (agentId) => agentId !== "opencode",
-    }), true);
-    assert.strictEqual(shouldBypassPiBubble({ hideBubbles: true }), true);
-    assert.strictEqual(shouldBypassPiBubble({
-      isAgentPermissionsEnabled: (agentId) => agentId !== "pi",
     }), true);
   });
 
@@ -265,7 +260,7 @@ describe("server-route-permission POST", () => {
     assert.deepStrictEqual(res.ctx.pendingPermissions, []);
   });
 
-  it("returns no-decision for Pi DND fallback", async () => {
+  it("allows legacy Pi permission requests during DND to preserve Pi YOLO behavior", async () => {
     const res = await callPermissionPost(JSON.stringify({
       agent_id: "pi",
       session_id: "pi:sid",
@@ -275,8 +270,9 @@ describe("server-route-permission POST", () => {
       ctx: { doNotDisturb: true },
     });
 
-    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.strictEqual(JSON.parse(res.body).hookSpecificOutput.decision.behavior, "allow");
     assert.deepStrictEqual(res.recorder.map((entry) => entry.outcome).filter(Boolean), ["dnd"]);
     assert.deepStrictEqual(res.ctx.pendingPermissions, []);
   });
@@ -368,54 +364,27 @@ describe("server-route-permission POST", () => {
     assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["accepted"]);
   });
 
-  it("returns no-decision when Pi permission subgate is disabled", async () => {
+  it("allows legacy Pi permission requests without creating a bubble", async () => {
     const res = await callPermissionPost(JSON.stringify({
       agent_id: "pi",
       session_id: "pi:sid",
       tool_name: "write",
       tool_input: { path: "out.txt", content: "x" },
-    }), {
-      ctx: {
-        isAgentPermissionsEnabled: (agentId) => agentId !== "pi",
-      },
-    });
-
-    assert.strictEqual(res.statusCode, 204);
-    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
-    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
-  });
-
-  it("pushes a Pi permission entry and shows the bubble", async () => {
-    const res = await callPermissionPost(JSON.stringify({
-      agent_id: "pi",
-      session_id: "pi:sid",
-      tool_name: "bash",
-      tool_input: { command: "npm test" },
       tool_use_id: "tool-1",
     }));
 
-    assert.strictEqual(res.statusCode, null);
-    assert.strictEqual(res.ctx.pendingPermissions.length, 1);
-    const entry = res.ctx.pendingPermissions[0];
-    assert.strictEqual(entry.res, res);
-    assert.strictEqual(entry.sessionId, "pi:sid");
-    assert.strictEqual(entry.toolName, "bash");
-    assert.strictEqual(entry.toolUseId, "tool-1");
-    assert.strictEqual(entry.agentId, "pi");
-    assert.strictEqual(entry.isPi, true);
-    assert.deepStrictEqual(res.ctx.calls.updateSession, [[
-      "pi:sid",
-      "notification",
-      "PermissionRequest",
-      { agentId: "pi" },
-    ]]);
-    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, [entry]);
-    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, [entry]);
-    assert.deepStrictEqual(res.ctx.calls.addPendingPermission, [entry]);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.strictEqual(JSON.parse(res.body).hookSpecificOutput.decision.behavior, "allow");
+    assert.deepStrictEqual(res.ctx.pendingPermissions, []);
+    assert.deepStrictEqual(res.ctx.calls.updateSession, []);
+    assert.deepStrictEqual(res.ctx.calls.showPermissionBubble, []);
+    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+    assert.deepStrictEqual(res.ctx.calls.addPendingPermission, []);
     assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["accepted"]);
   });
 
-  it("returns no-decision when Pi bubble creation fails", async () => {
+  it("allows legacy Pi permission requests when the Pi agent is disabled", async () => {
     const res = await callPermissionPost(JSON.stringify({
       agent_id: "pi",
       session_id: "pi:sid",
@@ -423,16 +392,15 @@ describe("server-route-permission POST", () => {
       tool_input: { path: "a.txt" },
     }), {
       ctx: {
-        showPermissionBubble: () => {
-          throw new Error("no window");
-        },
+        isAgentEnabled: (agentId) => agentId !== "pi",
       },
     });
 
-    assert.strictEqual(res.statusCode, 204);
+    assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.headers[CLAWD_SERVER_HEADER], CLAWD_SERVER_ID);
+    assert.strictEqual(JSON.parse(res.body).hookSpecificOutput.decision.behavior, "allow");
     assert.deepStrictEqual(res.ctx.pendingPermissions, []);
-    assert.deepStrictEqual(res.ctx.calls.maybeStartRemoteApproval, []);
+    assert.deepStrictEqual(res.recorder.map((item) => item.outcome).filter(Boolean), ["disabled"]);
   });
 
   it("pushes a normal Claude permission entry and shows the bubble", async () => {

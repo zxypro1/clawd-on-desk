@@ -38,12 +38,6 @@ function shouldBypassOpencodeBubble(ctx) {
   return !ctx.isAgentPermissionsEnabled("opencode");
 }
 
-function shouldBypassPiBubble(ctx) {
-  if (!arePermissionBubblesEnabled(ctx)) return true;
-  if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
-  return !ctx.isAgentPermissionsEnabled("pi");
-}
-
 function shouldBypassCodexBubble(ctx) {
   if (!arePermissionBubblesEnabled(ctx)) return true;
   if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
@@ -108,9 +102,18 @@ function sendCodexPermissionNoDecision(res) {
   res.end();
 }
 
-function sendPiPermissionNoDecision(res) {
-  res.writeHead(204, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
-  res.end();
+function sendPiPermissionAllow(res) {
+  const responseBody = JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: { behavior: "allow" },
+    },
+  });
+  res.writeHead(200, {
+    "Content-Type": "application/json",
+    [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
+  });
+  res.end(responseBody);
 }
 
 function sendAntigravityPermissionNoDecision(res) {
@@ -416,83 +419,22 @@ function handlePermissionPost(req, res, options) {
         return;
       }
 
-      // ── Pi extension PermissionRequest branch ──
-      // Pi waits synchronously on tool_call handlers but has no native
-      // permission prompt. Any Clawd-side no-decision must therefore return
-      // promptly so the extension can call ctx.ui.confirm() in the terminal.
+      // ── Pi extension legacy PermissionRequest branch ──
+      // Pi is state-only in Clawd. Current extensions never POST /permission.
+      // A pre-state-only managed extension may still be loaded in an existing
+      // Pi process, so return "allow" to preserve Pi's native YOLO behavior
+      // instead of turning Clawd fallback into a terminal confirmation prompt.
       if (data.agent_id === "pi") {
         const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "unknown";
-        const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
-        const toolInput = truncateDeep(rawInput);
-        const sessionId = typeof data.session_id === "string" && data.session_id ? data.session_id : "pi:default";
-        const toolUseId = normalizeHookToolUseId(
-          data.tool_use_id ?? data.toolUseId ?? data.toolUseID
-        );
-        const toolInputFingerprint = buildToolInputFingerprint(rawInput);
-
         if (ctx.doNotDisturb) {
           recordRequestHookEvent.droppedByDnd();
-          ctx.permLog(`pi DND -> no decision, terminal fallback (tool=${toolName})`);
-          sendPiPermissionNoDecision(res);
-          return;
-        }
-
-        if (typeof ctx.isAgentEnabled === "function" && !ctx.isAgentEnabled("pi")) {
+        } else if (typeof ctx.isAgentEnabled === "function" && !ctx.isAgentEnabled("pi")) {
           recordRequestHookEvent.droppedByDisabled();
-          ctx.permLog(`pi disabled -> no decision, terminal fallback (tool=${toolName})`);
-          sendPiPermissionNoDecision(res);
-          return;
-        }
-
-        if (shouldBypassPiBubble(ctx)) {
+        } else {
           recordRequestHookEvent.accepted();
-          const reason = !arePermissionBubblesEnabled(ctx)
-            ? "permission bubbles disabled"
-            : "pi bubbles disabled";
-          ctx.permLog(`${reason} -> no decision, terminal fallback (tool=${toolName})`);
-          sendPiPermissionNoDecision(res);
-          return;
         }
-
-        const permEntry = {
-          res,
-          abortHandler: null,
-          suggestions: [],
-          sessionId,
-          bubble: null,
-          hideTimer: null,
-          toolName,
-          toolInput,
-          toolUseId,
-          toolInputFingerprint,
-          resolvedSuggestion: null,
-          createdAt: Date.now(),
-          agentId: "pi",
-          isPi: true,
-        };
-        const abortHandler = () => {
-          if (res.writableFinished) return;
-          ctx.permLog("abortHandler fired (pi)");
-          ctx.resolvePermissionEntry(permEntry, "no-decision", "Client disconnected");
-        };
-        permEntry.abortHandler = abortHandler;
-        res.on("close", abortHandler);
-
-        addPendingPermission(ctx, permEntry);
-        ctx.updateSession(sessionId, "notification", "PermissionRequest", { agentId: "pi" });
-
-        ctx.permLog(`pi showing bubble: tool=${toolName} session=${sessionId} stack=${ctx.pendingPermissions.length}`);
-        recordRequestHookEvent.accepted();
-        try {
-          ctx.showPermissionBubble(permEntry);
-        } catch (bubbleErr) {
-          ctx.permLog(`pi bubble failed: ${bubbleErr && bubbleErr.message} -> no decision`);
-          removePendingPermission(ctx, permEntry, "pi-bubble-failed");
-          if (permEntry.abortHandler) res.removeListener("close", permEntry.abortHandler);
-          sendPiPermissionNoDecision(res);
-          return;
-        }
-        startRemoteApproval(ctx, permEntry);
+        ctx.permLog(`pi state-only -> allow native YOLO fallback (tool=${toolName})`);
+        sendPiPermissionAllow(res);
         return;
       }
 
@@ -649,7 +591,7 @@ function handlePermissionPost(req, res, options) {
       try {
         ctx.showPermissionBubble(permEntry);
       } catch (bubbleErr) {
-        // Mirror the Codex/Pi branches: a BrowserWindow construction failure
+        // Mirror the Codex branch: a BrowserWindow construction failure
         // here would leave a ghost permEntry in pendingPermissions because
         // abortHandler only fires on res close. Pop the entry explicitly and
         // destroy the socket so CC falls back to its built-in chat prompt
@@ -688,11 +630,10 @@ module.exports = {
   shouldBypassCCBubble,
   shouldBypassCodexBubble,
   shouldBypassOpencodeBubble,
-  shouldBypassPiBubble,
   arePermissionBubblesEnabled,
   shouldInterceptCodexPermission,
   sendCodexPermissionNoDecision,
-  sendPiPermissionNoDecision,
+  sendPiPermissionAllow,
   sendAntigravityPermissionNoDecision,
   handlePermissionPost,
 };

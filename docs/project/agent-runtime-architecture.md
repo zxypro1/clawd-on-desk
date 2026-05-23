@@ -135,7 +135,7 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 - `agents/kiro-cli.js` — Kiro CLI 事件映射（camelCase），无 HTTP hook / 无权限 / 无 subagent
 - `agents/codebuddy.js` — CodeBuddy 事件映射（PascalCase，Claude Code 兼容），支持权限
 - `agents/opencode.js` — opencode 事件映射 + 能力（plugin、permission、terminal focus）
-- `agents/pi.js` — Pi extension 事件映射 + 能力（extension、permission、terminal fallback）
+- `agents/pi.js` — Pi extension 事件映射 + 能力（extension，state-only，不接管 permission）
 - `agents/openclaw.js` — OpenClaw plugin 事件映射 + 能力（state-only，本地终端聚焦暂不支持）
 - `agents/hermes.js` — Hermes Agent plugin 事件映射 + 能力（session、SessionEnd、terminal focus；无 permission/subagent）
 - `agents/registry.js` — agent 注册表：按 ID 或进程名查找 agent 配置
@@ -197,11 +197,11 @@ opencode、OpenClaw 和 Hermes 是 plugin 形式集成的 agent；OpenClaw Phase
 - Pi 使用 global extension 目录 `~/.pi/agent/extensions/clawd-on-desk`；安装器复制 `pi-extension.ts` 和自包含的 `pi-extension-core.js`
 - Extension 运行目录不在 Clawd repo 内，不能依赖 `hooks/shared-process.js`；需要的进程树和 HTTP 逻辑保持在 extension 文件内
 - 只在 `ctx.hasUI === true` 或交互式 TTY 模式上报状态，避免 print/RPC 模式污染桌宠状态
-- `bash` / `write` / `edit` 的 `tool_call` 会同步等待 Clawd `/permission`；Allow 放行，Deny 返回 `{ block: true }`
-- Pi 没有可接管的原生桌面审批流，所以 Clawd DND、隐藏气泡、agent/subgate disabled、HTTP 失败、坏响应等都必须转成 Pi terminal `ctx.ui.confirm()` fallback，不能 auto-allow
-- `tool_call` handler 必须顶层 catch；Pi 的 `emitToolCall()` 不 catch extension 异常，未捕获异常会变成通用 `Extension failed, blocking execution`
+- Pi 是 state-only：`tool_call` 只上报 `PreToolUse` 状态，不等待 Clawd `/permission`，不弹权限气泡，也不调用 `ctx.ui.confirm()`
+- 旧版 managed extension 如果仍在已启动的 Pi 进程里向 `/permission` 发请求，server 返回 allow，保持 Pi 默认 YOLO 行为，而不是把 fallback 变成手动确认
+- `tool_call` handler 必须顶层 catch 并返回 `undefined`；Pi 的 `emitToolCall()` 不 catch extension 异常，未捕获异常可能变成通用 `Extension failed, blocking execution`
 - `tool_result` 按 `isError` 拆成 `PostToolUse` / `PostToolUseFailure`
-- Pi permission bubble 默认开启：`prefs` 默认把 `agents.pi.permissionsEnabled` 置为 `true`；v1->v2 migration 会保留显式已有值，缺省时补成 `true`
+- Pi permission subgate 默认关闭：`prefs` 默认把 `agents.pi.permissionsEnabled` 置为 `false`；v4 migration 会把旧 true 重置为 false
 
 ## OpenClaw Notes
 

@@ -691,7 +691,6 @@ function buildPermissionBubblePayload(permEntry) {
     lang: ctx.lang,
     isElicitation: permEntry.isElicitation || false,
     isOpencode: permEntry.isOpencode || false,
-    isPi: permEntry.isPi || false,
     isAntigravity: permEntry.isAntigravity || false,
     opencodeAlways: permEntry.opencodeAlwaysCandidates || [],
     opencodePatterns: permEntry.opencodePatterns || [],
@@ -732,7 +731,7 @@ function isRemoteApprovalActionable(permEntry) {
   if (permEntry.toolName === "ExitPlanMode" || permEntry.toolName === "AskUserQuestion") return false;
   if (PASSTHROUGH_TOOLS.has(permEntry.toolName)) return false;
   // Headless sessions auto-deny locally; mirror that on the Telegram side so a
-  // non-interactive Codex/Pi/CC run never sends an actionable approval card.
+  // non-interactive Codex/CC run never sends an actionable approval card.
   const session = ctx.sessions && typeof ctx.sessions.get === "function"
     ? ctx.sessions.get(permEntry.sessionId)
     : null;
@@ -961,17 +960,6 @@ function maybeStartRemoteApproval(permEntry) {
     return;
   }
 
-  if (permEntry.isPi) {
-    if (behavior === "no-decision") {
-      sendNoDecisionResponse(res, message || "fallback", "pi");
-    } else {
-      const decision = { behavior: behavior === "deny" ? "deny" : "allow" };
-      if (behavior === "deny" && message) decision.message = message;
-      sendPermissionResponse(res, decision);
-    }
-    return;
-  }
-
   if (permEntry.isAntigravity) {
     if (behavior === "no-decision") {
       sendAntigravityNoDecisionResponse(res, message || "fallback");
@@ -1191,9 +1179,8 @@ function handleDecide(event, behavior) {
     }
     return;
   }
-  if ((perm.isPi || perm.isAntigravity) && behavior !== "allow" && behavior !== "deny") {
-    const label = perm.isAntigravity ? "Antigravity" : "Pi";
-    resolvePermissionEntry(perm, "no-decision", `Unsupported ${label} bubble action: ${String(behavior)}`);
+  if (perm.isAntigravity && behavior !== "allow" && behavior !== "deny") {
+    resolvePermissionEntry(perm, "no-decision", `Unsupported Antigravity bubble action: ${String(behavior)}`);
     if (behavior === "deny-and-focus") {
       ctx.focusTerminalForSession(perm.sessionId, { fallbackEntry: buildPermissionFocusEntry(perm) });
     }
@@ -1383,14 +1370,12 @@ function dismissInteractivePermissionWithoutDecision(perm, reason) {
     }, 250);
   }
   // Do not answer approval requests on the user's behalf. Dropping the UI
-  // means Codex/Antigravity/Pi receive no decision, CC/CodeBuddy fall back
+  // means Codex/Antigravity receive no decision, CC/CodeBuddy fall back
   // via socket close, and opencode falls back by receiving no bridge reply.
   if (perm.isCodex) {
     sendCodexNoDecisionResponse(perm.res, reason || "permission-dismissed");
   } else if (perm.isAntigravity) {
     sendAntigravityNoDecisionResponse(perm.res, reason || "permission-dismissed");
-  } else if (perm.isPi) {
-    sendNoDecisionResponse(perm.res, reason || "permission-dismissed", "pi");
   } else if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
     try { perm.res.destroy(); } catch {}
   }
@@ -1475,13 +1460,13 @@ function cleanup() {
   if (typeof unsubscribeShortcuts === "function") {
     try { unsubscribeShortcuts(); } catch {}
   }
-  // Clean up all pending permission requests. Codex/Antigravity/Pi get
-  // no-decision so their native approval flow can continue; Claude/CodeBuddy
-  // get explicit deny so they don't hang while the app is quitting.
+  // Clean up all pending permission requests. Codex/Antigravity get
+  // no-decision so their native flow can continue; Claude/CodeBuddy get
+  // explicit deny so they don't hang while quitting.
   for (const perm of [...pendingPermissions]) {
     if (perm._delayTimer) clearTimeout(perm._delayTimer);
     if (perm.autoExpireTimer) clearTimeout(perm.autoExpireTimer);
-    if (perm.isCodex || perm.isAntigravity || perm.isPi) resolvePermissionEntry(perm, "no-decision", "Clawd is quitting");
+    if (perm.isCodex || perm.isAntigravity) resolvePermissionEntry(perm, "no-decision", "Clawd is quitting");
     else resolvePermissionEntry(perm, "deny", "Clawd is quitting");
   }
 }

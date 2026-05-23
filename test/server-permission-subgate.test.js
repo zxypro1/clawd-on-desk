@@ -6,7 +6,6 @@ const assert = require("node:assert");
 const {
   shouldBypassCCBubble,
   shouldBypassOpencodeBubble,
-  shouldBypassPiBubble,
 } = require("../src/server").__test;
 
 function makeCtx({ enabled = true, hideBubbles = false, permissionBubblesEnabled = true } = {}) {
@@ -101,29 +100,6 @@ describe("shouldBypassOpencodeBubble", () => {
   });
 });
 
-describe("shouldBypassPiBubble", () => {
-  it("does not bypass when the Pi sub-gate is on", () => {
-    assert.strictEqual(shouldBypassPiBubble(makeCtx({ enabled: true })), false);
-  });
-
-  it("bypasses when the Pi sub-gate or split permission category is off", () => {
-    assert.strictEqual(shouldBypassPiBubble(makeCtx({ enabled: false })), true);
-    assert.strictEqual(shouldBypassPiBubble(makeCtx({ enabled: true, permissionBubblesEnabled: false })), true);
-  });
-
-  it("always queries the 'pi' agent id regardless of call context", () => {
-    const calls = [];
-    const ctx = {
-      isAgentPermissionsEnabled: (id) => {
-        calls.push(id);
-        return false;
-      },
-    };
-    shouldBypassPiBubble(ctx);
-    assert.deepStrictEqual(calls, ["pi"]);
-  });
-});
-
-// D2: shouldBypassAntigravityBubble removed — antigravity is state-only,
-// no bubble path exists for the subgate to gate. Tests deleted with the
-// helper.
+// D2/D3: shouldBypassAntigravityBubble and shouldBypassPiBubble are absent
+// because both integrations are state-only; no bubble path exists for a
+// subgate to gate.

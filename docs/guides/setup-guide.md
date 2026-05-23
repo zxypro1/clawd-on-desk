@@ -24,7 +24,7 @@
 
 **opencode** — uses a plugin entry in `~/.config/opencode/opencode.json`. Clawd auto-registers it on launch when opencode is installed, or you can run `node hooks/opencode-install.js` manually.
 
-**Pi** — uses a global extension directory at `~/.pi/agent/extensions/clawd-on-desk`. Clawd auto-registers it on launch when Pi is installed, or you can run `npm run install:pi-extension` manually. Interactive Pi sessions report lifecycle state to Clawd. Pi permission bubbles are enabled by default for `bash`, `write`, and `edit` tool calls; when Clawd bubbles are unavailable, disabled, or hidden by DND, the extension falls back to Pi's terminal confirmation instead of allowing the tool silently.
+**Pi** — uses a global extension directory at `~/.pi/agent/extensions/clawd-on-desk`. Clawd auto-registers it on launch when Pi is installed, or you can run `npm run install:pi-extension` manually. Interactive Pi sessions report lifecycle and tool activity to Clawd, but Pi is state-only: Clawd does not show permission bubbles, does not call Pi terminal confirmation, and preserves Pi's default YOLO execution behavior.
 
 **OpenClaw** — uses a plugin path under `~/.openclaw/openclaw.json`. Clawd auto-registers it only when an OpenClaw config already exists, or you can run `npm run install:openclaw-plugin` manually to let OpenClaw's CLI handle first-time setup. Phase 1 is state-only and targets local `openclaw tui --local` sessions.
 

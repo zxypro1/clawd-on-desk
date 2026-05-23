@@ -175,8 +175,8 @@ describe("Agent Registry", () => {
 
     const pi = registry.getAgent("pi");
     assert.strictEqual(pi.capabilities.httpHook, false);
-    assert.strictEqual(pi.capabilities.permissionApproval, true);
-    assert.strictEqual(pi.capabilities.interactiveBubble, true);
+    assert.strictEqual(pi.capabilities.permissionApproval, false);
+    assert.strictEqual(pi.capabilities.interactiveBubble, false);
     assert.strictEqual(pi.capabilities.sessionEnd, true);
     assert.strictEqual(pi.capabilities.subagent, false);
 

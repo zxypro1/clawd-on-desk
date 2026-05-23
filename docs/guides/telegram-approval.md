@@ -15,7 +15,6 @@ or prompt-submission path.
 - Claude Code and CodeBuddy normal permission requests.
 - Codex CLI official `PermissionRequest` hooks when Codex permission handling is
   in intercept mode.
-- Pi permission requests that Clawd already supports.
 
 Telegram cards are not sent for DND/native-fallback cases, disabled agents,
 hidden permission bubbles, opencode, elicitation prompts, passive notifications,

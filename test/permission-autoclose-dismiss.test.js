@@ -5,7 +5,6 @@
 //   Claude Code / CodeBuddy → res.destroy()        (chat fallback)
 //   Codex                   → sendCodexNoDecisionResponse (204)
 //   Antigravity             → sendNoDecisionResponse (204, ask fallback)
-//   Pi                      → sendNoDecisionResponse (204, pi label)
 //   Elicitation             → res.destroy() + focusTerminalForSession
 //   opencode                → silent drop (no bridge POST)
 //
@@ -162,19 +161,6 @@ describe("permission autoclose: no-decision dismiss semantics", () => {
 
     assert.equal(permEntry.res.captured.statusCode, 204, "Codex no-decision is 204");
     assert.equal(permEntry.res.captured.destroyCalls, 0, "should not destroy socket on codex path");
-    assert.equal(pendingPermissions.indexOf(permEntry), -1);
-  });
-
-  it("Pi branch sends 204 no-decision", () => {
-    const ctx = makeCtx();
-    const { resolvePermissionEntry, pendingPermissions } = initPermission(ctx);
-    const permEntry = makePermEntry({ isPi: true });
-    pendingPermissions.push(permEntry);
-
-    resolvePermissionEntry(permEntry, "no-decision", "Auto-closed");
-
-    assert.equal(permEntry.res.captured.statusCode, 204);
-    assert.equal(permEntry.res.captured.destroyCalls, 0);
     assert.equal(pendingPermissions.indexOf(permEntry), -1);
   });
 

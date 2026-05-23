@@ -76,19 +76,21 @@ describe("prefs.getDefaults", () => {
 
   it("seeds permission-capable agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
-    // Antigravity intentionally excluded — D2 makes it state-only, no bubble.
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode", "pi"]) {
+    // State-only integrations intentionally excluded — no bubble.
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "kimi-cli", "opencode"]) {
       assert.strictEqual(
         d.agents[id].permissionsEnabled,
         true,
         `${id} should default permissionsEnabled`
       );
     }
-    assert.strictEqual(
-      d.agents["antigravity-cli"].permissionsEnabled,
-      false,
-      "antigravity-cli is state-only (D2), permissionsEnabled must default to false"
-    );
+    for (const id of ["antigravity-cli", "pi", "openclaw"]) {
+      assert.strictEqual(
+        d.agents[id].permissionsEnabled,
+        false,
+        `${id} is state-only, permissionsEnabled must default to false`
+      );
+    }
     assert.strictEqual(
       Object.prototype.hasOwnProperty.call(d.agents.hermes, "permissionsEnabled"),
       false,
@@ -103,10 +105,10 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.agents.openclaw.notificationHookEnabled, true);
   });
 
-  it("defaults Pi permission bubbles on", () => {
+  it("defaults Pi permission bubbles off", () => {
     const d = prefs.getDefaults();
     assert.strictEqual(d.agents.pi.enabled, true);
-    assert.strictEqual(d.agents.pi.permissionsEnabled, true);
+    assert.strictEqual(d.agents.pi.permissionsEnabled, false);
     assert.strictEqual(d.agents.pi.notificationHookEnabled, true);
   });
 
@@ -214,9 +216,9 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.notificationBubbleAutoCloseSeconds, 12);
   });
 
-  it("preserves existing Pi permission prefs during v2 migration", () => {
+  it("resets existing Pi permission prefs during v4 migration", () => {
     const v = prefs.validate(prefs.migrate({
-      version: 1,
+      version: 3,
       agents: {
         pi: { enabled: true, permissionsEnabled: true, notificationHookEnabled: true },
       },
@@ -224,11 +226,11 @@ describe("prefs.validate", () => {
 
     assert.strictEqual(v.version, prefs.CURRENT_VERSION);
     assert.strictEqual(v.agents.pi.enabled, true);
-    assert.strictEqual(v.agents.pi.permissionsEnabled, true);
+    assert.strictEqual(v.agents.pi.permissionsEnabled, false);
     assert.strictEqual(v.agents.pi.notificationHookEnabled, true);
   });
 
-  it("defaults missing Pi permission prefs on during v2 migration", () => {
+  it("defaults missing Pi permission prefs off during migration", () => {
     const v = prefs.validate(prefs.migrate({
       version: 1,
       agents: {
@@ -237,7 +239,7 @@ describe("prefs.validate", () => {
     }));
 
     assert.strictEqual(v.version, prefs.CURRENT_VERSION);
-    assert.strictEqual(v.agents.pi.permissionsEnabled, true);
+    assert.strictEqual(v.agents.pi.permissionsEnabled, false);
   });
 
   it("normalizes Telegram approval prefs without storing a token", () => {

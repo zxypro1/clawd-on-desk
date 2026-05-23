@@ -7,7 +7,6 @@ function buildSettingsAgentOrderExports() {
     "gemini-cli",
     "kimi-cli",
     "opencode",
-    "pi",
     "codebuddy",
   ];
 
@@ -16,6 +15,7 @@ function buildSettingsAgentOrderExports() {
     "cursor-agent",
     "copilot-cli",
     "kiro-cli",
+    "pi",
     "openclaw",
     "hermes",
   ];
