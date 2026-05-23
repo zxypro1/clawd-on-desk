@@ -96,6 +96,7 @@ const SCHEMA = {
   openAtLoginHydrated: { type: "boolean", default: false },
   bubbleFollowPet: { type: "boolean", default: false },
   sessionHudEnabled: { type: "boolean", default: true },
+  sessionHudShowStateLabels: { type: "boolean", default: true },
   sessionHudShowElapsed: { type: "boolean", default: true },
   sessionHudCleanupDetached: { type: "boolean", default: false },
   sessionHudAutoHide: { type: "boolean", default: true },

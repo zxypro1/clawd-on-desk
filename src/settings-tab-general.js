@@ -7,6 +7,7 @@
     "soundVolume",
     "lowPowerIdleMode",
     "sessionHudEnabled",
+    "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
     "sessionHudCleanupDetached",
     "sessionHudAutoHide",
@@ -28,12 +29,14 @@
     "updateBubbleAutoCloseSeconds",
   ]);
   const SESSION_HUD_CHILD_SWITCH_KEYS = [
+    "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
     "sessionHudCleanupDetached",
     "sessionHudAutoHide",
   ];
   const SESSION_HUD_SUMMARY_KEYS = new Set([
     "sessionHudEnabled",
+    "sessionHudShowStateLabels",
     "sessionHudShowElapsed",
     "sessionHudAutoHide",
     "sessionHudCleanupDetached",
@@ -359,6 +362,12 @@
         labelKey: "rowSessionHudMaster",
       }),
       helpers.buildSwitchRow({
+        key: "sessionHudShowStateLabels",
+        labelKey: "rowSessionHudStateLabels",
+        descKey: "rowSessionHudStateLabelsDesc",
+        disabled: !sessionHudControlsEnabled,
+      }),
+      helpers.buildSwitchRow({
         key: "sessionHudShowElapsed",
         labelKey: "rowSessionHudElapsed",
         descKey: "rowSessionHudElapsedDesc",
@@ -390,11 +399,21 @@
       wrap.classList.toggle("compact", !enabled);
       const onLabel = t("bubblePolicySummaryOn");
       const offLabel = t("bubblePolicySummaryOff");
-      const items = [{
-        text: t("sessionHudSummaryEnabled").replace("{state}", enabled ? onLabel : offLabel),
-        accent: enabled,
-      }];
+      const items = [];
+      if (!enabled) {
+        items.push({
+          text: t("sessionHudSummaryEnabled").replace("{state}", offLabel),
+          accent: false,
+        });
+      }
       if (enabled) {
+        items.push({
+          text: t("sessionHudSummaryLabels").replace(
+            "{state}",
+            snapshot.sessionHudShowStateLabels !== false ? onLabel : offLabel
+          ),
+          accent: snapshot.sessionHudShowStateLabels !== false,
+        });
         items.push({
           text: t("sessionHudSummaryElapsed").replace(
             "{state}",

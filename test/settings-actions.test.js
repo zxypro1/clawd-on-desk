@@ -78,7 +78,7 @@ describe("updateRegistry pure-data validators", () => {
     const deps = { snapshot: baseSnapshot };
     for (const key of [
       "sessionHudEnabled", "sessionHudShowElapsed", "sessionHudCleanupDetached",
-      "sessionHudAutoHide", "sessionHudPinned",
+      "sessionHudShowStateLabels", "sessionHudAutoHide", "sessionHudPinned",
       "miniMode", "openAtLoginHydrated", "soundMuted", "bubbleFollowPet",
       "hideBubbles", "permissionBubblesEnabled", "lowPowerIdleMode",
       "allowEdgePinning", "keepSizeAcrossDisplays",

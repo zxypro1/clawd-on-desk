@@ -50,6 +50,7 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.allowEdgePinning, false);
     assert.strictEqual(d.keepSizeAcrossDisplays, false);
     assert.strictEqual(d.sessionHudEnabled, true);
+    assert.strictEqual(d.sessionHudShowStateLabels, true);
     assert.strictEqual(d.sessionHudShowElapsed, true);
     assert.strictEqual(d.sessionHudCleanupDetached, false);
     assert.strictEqual(d.sessionHudAutoHide, true);
@@ -140,6 +141,7 @@ describe("prefs.validate", () => {
       x: NaN,                // not finite
       bubbleFollowPet: true, // ok
       sessionHudEnabled: "yes",
+      sessionHudShowStateLabels: "yes",
       sessionHudShowElapsed: "yes",
       sessionHudCleanupDetached: "yes",
       hideBubbles: 0,        // wrong type
@@ -158,6 +160,7 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.x, 0);
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.sessionHudEnabled, true);
+    assert.strictEqual(v.sessionHudShowStateLabels, true);
     assert.strictEqual(v.sessionHudShowElapsed, true);
     assert.strictEqual(v.sessionHudCleanupDetached, false);
     assert.strictEqual(v.hideBubbles, false);
@@ -268,6 +271,7 @@ describe("prefs.validate", () => {
       lowPowerIdleMode: true,
       bubbleFollowPet: true,
       sessionHudEnabled: false,
+      sessionHudShowStateLabels: false,
       sessionHudShowElapsed: false,
       sessionHudCleanupDetached: true,
       allowEdgePinning: true,
@@ -286,6 +290,7 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.lowPowerIdleMode, true);
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.sessionHudEnabled, false);
+    assert.strictEqual(v.sessionHudShowStateLabels, false);
     assert.strictEqual(v.sessionHudShowElapsed, false);
     assert.strictEqual(v.sessionHudCleanupDetached, true);
     assert.strictEqual(v.allowEdgePinning, true);

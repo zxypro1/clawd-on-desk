@@ -162,6 +162,7 @@ const updateRegistry = {
   lowPowerIdleMode: requireBoolean("lowPowerIdleMode"),
   bubbleFollowPet: requireBoolean("bubbleFollowPet"),
   sessionHudEnabled: requireBoolean("sessionHudEnabled"),
+  sessionHudShowStateLabels: requireBoolean("sessionHudShowStateLabels"),
   sessionHudShowElapsed: requireBoolean("sessionHudShowElapsed"),
   sessionHudCleanupDetached: requireBoolean("sessionHudCleanupDetached"),
   sessionHudAutoHide: requireBoolean("sessionHudAutoHide"),

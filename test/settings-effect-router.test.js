@@ -160,6 +160,14 @@ describe("settings-effect-router", () => {
     ]);
 
     calls.length = 0;
+    emit({ sessionHudShowStateLabels: false });
+    assert.deepStrictEqual(calls, [
+      ["updateMirrors", { sessionHudShowStateLabels: false }],
+      ["syncSessionHudVisibility"],
+      ["repositionFloatingBubbles"],
+    ]);
+
+    calls.length = 0;
     emit({ sessionHudCleanupDetached: true });
     assert.deepStrictEqual(calls, [
       ["updateMirrors", { sessionHudCleanupDetached: true }],

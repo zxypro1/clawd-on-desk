@@ -168,6 +168,7 @@ function createSettingsEffectRouter(options = {}) {
     }
     if (
       "sessionHudEnabled" in changes
+      || "sessionHudShowStateLabels" in changes
       || "sessionHudShowElapsed" in changes
       || "sessionHudAutoHide" in changes
       || "sessionHudPinned" in changes

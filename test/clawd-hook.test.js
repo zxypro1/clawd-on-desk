@@ -306,6 +306,43 @@ describe("buildStateBody", () => {
       assert.ok(!("session_title" in body));
     });
 
+    it("uses the first prompt line for UserPromptSubmit when no title exists", () => {
+      const body = buildStateBody(
+        "UserPromptSubmit",
+        { session_id: "s", prompt: "Fix the Session HUD\nKeep the bell" },
+        mockResolve
+      );
+      assert.strictEqual(body.session_title, "Fix the Session HUD");
+    });
+
+    it("uses the first non-empty prompt line for UserPromptSubmit fallback", () => {
+      const body = buildStateBody(
+        "UserPromptSubmit",
+        { session_id: "s", prompt: "\n  \nContinue AWS setup\nDetails later" },
+        mockResolve
+      );
+      assert.strictEqual(body.session_title, "Continue AWS setup");
+    });
+
+    it("keeps prompt fallback titles compact", () => {
+      const body = buildStateBody(
+        "UserPromptSubmit",
+        { session_id: "s", prompt: `Configure ${"Lightsail ".repeat(10)}` },
+        mockResolve
+      );
+      assert.strictEqual(body.session_title.length, 40);
+      assert.strictEqual(body.session_title.endsWith("…"), true);
+    });
+
+    it("skips prompt fallback titles that look like secrets", () => {
+      const body = buildStateBody(
+        "UserPromptSubmit",
+        { session_id: "s", prompt: "token=ghp_abcdefghijklmnopqrstuvwxyz123456\nFix deploy" },
+        mockResolve
+      );
+      assert.ok(!("session_title" in body));
+    });
+
     it("falls back to transcript when payload.session_title is missing", () => {
       const file = writeTmpJsonl([
         { type: "user", message: { content: "hi" } },
@@ -329,6 +366,18 @@ describe("buildStateBody", () => {
         mockResolve
       );
       assert.strictEqual(body.session_title, "Payload Title");
+    });
+
+    it("prefers transcript title over prompt fallback", () => {
+      const file = writeTmpJsonl([
+        { type: "custom-title", customTitle: "Transcript Title" },
+      ]);
+      const body = buildStateBody(
+        "UserPromptSubmit",
+        { session_id: "s", prompt: "Prompt Title", transcript_path: file },
+        mockResolve
+      );
+      assert.strictEqual(body.session_title, "Transcript Title");
     });
 
     it("ignores non-string session_title and falls back to transcript", () => {

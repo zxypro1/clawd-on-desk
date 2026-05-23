@@ -399,11 +399,19 @@ html, body {
 @media (max-width: 720px) {
   .session-hud-collapsible .collapsible-group-header {
     align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .session-hud-collapsible .collapsible-group-summary {
+    flex: 0 0 calc(100% - 22px);
+    justify-content: flex-start;
+    max-width: calc(100% - 22px);
+    margin-left: 22px;
   }
   .session-hud-summary-control {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: min(238px, 42vw);
+    width: min(238px, 100%);
     max-width: 100%;
+    justify-content: start;
   }
   .session-hud-summary-control .collapsible-summary-chip {
     max-width: 100%;

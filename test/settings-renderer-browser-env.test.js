@@ -586,6 +586,7 @@ function makeGeneralSnapshot(overrides = {}) {
     lang: "en",
     size: 50,
     sessionHudEnabled: true,
+    sessionHudShowStateLabels: true,
     sessionHudShowElapsed: true,
     sessionHudCleanupDetached: true,
     soundMuted: false,
@@ -1837,6 +1838,8 @@ describe("settings renderer browser environment", () => {
     assert.ok(generalSource.includes('state.transientUiState.generalSwitches.set("soundMuted"'));
     assert.ok(generalSource.includes("if (!result || result.status !== \"ok\" || result.noop)"));
     assert.ok(generalSource.includes("sessionHudSummaryAutoHide"));
+    assert.ok(generalSource.includes("sessionHudSummaryLabels"));
+    assert.ok(generalSource.includes('key: "sessionHudShowStateLabels"'));
     assert.ok(generalSource.includes("session-hud-summary-control"));
     assert.ok(/\.settings-option-list\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*8px;/.test(css));
     assert.ok(/\.settings-option-list \.settings-option-item\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--panel-bg\) 78%,\s*transparent\);/.test(css));
@@ -1848,7 +1851,9 @@ describe("settings renderer browser environment", () => {
     assert.ok(!/\.sound-collapsible \.collapsible-group-summary\s*\{[^}]*flex-wrap:\s*nowrap;/.test(css));
     assert.ok(/\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*max-content\);/.test(css));
     assert.ok(/\.session-hud-summary-control\.compact\s*\{[\s\S]*display:\s*inline-flex;[\s\S]*width:\s*auto;/.test(css));
-    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*width:\s*min\(238px,\s*42vw\);/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-collapsible \.collapsible-group-header\s*\{[\s\S]*flex-wrap:\s*wrap;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-collapsible \.collapsible-group-summary\s*\{[\s\S]*flex:\s*0 0 calc\(100% - 22px\);[\s\S]*margin-left:\s*22px;/.test(css));
+    assert.ok(/@media \(max-width:\s*720px\)\s*\{[\s\S]*\.session-hud-summary-control\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[\s\S]*width:\s*min\(238px,\s*100%\);/.test(css));
     assert.ok(/\.collapsible-group-text \.row-label\s*\{[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/.test(css));
     assert.ok(/\.collapsible-group-text \.row-desc\s*\{[\s\S]*white-space:\s*normal;[\s\S]*-webkit-line-clamp:\s*2;/.test(css));
     assert.ok(/\.sound-summary-control\s*\{[\s\S]*display:\s*inline-flex;/.test(css));
@@ -2273,6 +2278,7 @@ describe("settings renderer browser environment", () => {
       lang: "en",
       size: 50,
       sessionHudEnabled: false,
+      sessionHudShowStateLabels: true,
       sessionHudShowElapsed: true,
       sessionHudCleanupDetached: true,
       soundMuted: false,
@@ -2301,11 +2307,13 @@ describe("settings renderer browser environment", () => {
     harness.renderContent();
 
     const master = harness.getSwitch("sessionHudEnabled");
+    const labels = harness.getSwitch("sessionHudShowStateLabels");
     const elapsed = harness.getSwitch("sessionHudShowElapsed");
     const cleanup = harness.getSwitch("sessionHudCleanupDetached");
     const summary = harness.core.state.mountedControls.sessionHudSummary.element;
     const optionList = harness.content.querySelector(".session-hud-option-list");
     assert.ok(master);
+    assert.ok(labels);
     assert.ok(elapsed);
     assert.ok(cleanup);
     assert.ok(optionList);
@@ -2314,6 +2322,9 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(summary.children.length, 1);
     assert.strictEqual(summary.children[0].textContent, "HUD: off");
     assert.strictEqual(summary.classList.contains("compact"), true);
+    assert.strictEqual(labels.classList.contains("disabled"), true);
+    assert.strictEqual(labels.attributes["aria-disabled"], "true");
+    assert.strictEqual(labels.tabIndex, -1);
     assert.strictEqual(elapsed.classList.contains("disabled"), true);
     assert.strictEqual(elapsed.attributes["aria-disabled"], "true");
     assert.strictEqual(elapsed.tabIndex, -1);
@@ -2330,10 +2341,14 @@ describe("settings renderer browser environment", () => {
       "Session HUD master broadcasts should patch mounted controls instead of rebuilding General"
     );
     assert.strictEqual(harness.getSwitch("sessionHudEnabled"), master);
+    assert.strictEqual(harness.getSwitch("sessionHudShowStateLabels"), labels);
     assert.strictEqual(harness.getSwitch("sessionHudShowElapsed"), elapsed);
     assert.strictEqual(harness.getSwitch("sessionHudCleanupDetached"), cleanup);
     assert.strictEqual(master.classList.contains("on"), true);
     assert.strictEqual(master.classList.contains("pending"), false);
+    assert.strictEqual(labels.classList.contains("disabled"), false);
+    assert.strictEqual(labels.attributes["aria-disabled"], undefined);
+    assert.strictEqual(labels.tabIndex, 0);
     assert.strictEqual(elapsed.classList.contains("disabled"), false);
     assert.strictEqual(elapsed.attributes["aria-disabled"], undefined);
     assert.strictEqual(elapsed.tabIndex, 0);
@@ -2341,7 +2356,7 @@ describe("settings renderer browser environment", () => {
     assert.strictEqual(cleanup.tabIndex, 0);
     assert.strictEqual(summary.children.length, 4);
     assert.strictEqual(summary.classList.contains("compact"), false);
-    assert.strictEqual(summary.children[0].textContent, "HUD: on");
+    assert.strictEqual(summary.children[0].textContent, "Labels: on");
     assert.strictEqual(summary.children[1].textContent, "Time: on");
     assert.strictEqual(summary.children[2].textContent, "Auto-hide: off");
     assert.strictEqual(summary.children[3].textContent, "Auto-clear: on");
@@ -2551,6 +2566,7 @@ describe("settings renderer browser environment", () => {
       lang: "en",
       size: 50,
       sessionHudEnabled: true,
+      sessionHudShowStateLabels: true,
       sessionHudShowElapsed: true,
       sessionHudCleanupDetached: true,
       soundMuted: false,
@@ -2616,6 +2632,7 @@ describe("settings renderer browser environment", () => {
       lang: "en",
       size: 50,
       sessionHudEnabled: true,
+      sessionHudShowStateLabels: true,
       sessionHudShowElapsed: true,
       sessionHudCleanupDetached: true,
       soundMuted: false,
@@ -2677,11 +2694,14 @@ describe("settings renderer browser environment", () => {
     harness.renderContent();
 
     const master = harness.getSwitch("sessionHudEnabled");
+    const labels = harness.getSwitch("sessionHudShowStateLabels");
     const elapsed = harness.getSwitch("sessionHudShowElapsed");
     const cleanup = harness.getSwitch("sessionHudCleanupDetached");
     assert.ok(master);
+    assert.ok(labels);
     assert.ok(elapsed);
     assert.ok(cleanup);
+    assert.strictEqual(labels.classList.contains("disabled"), false);
     assert.strictEqual(elapsed.classList.contains("disabled"), false);
     assert.strictEqual(cleanup.classList.contains("disabled"), false);
 
@@ -2693,9 +2713,13 @@ describe("settings renderer browser environment", () => {
 
     assert.strictEqual(harness.getContentRenderCount(), beforeRenderCount);
     assert.strictEqual(harness.getSwitch("sessionHudEnabled"), master);
+    assert.strictEqual(harness.getSwitch("sessionHudShowStateLabels"), labels);
     assert.strictEqual(harness.getSwitch("sessionHudShowElapsed"), elapsed);
     assert.strictEqual(harness.getSwitch("sessionHudCleanupDetached"), cleanup);
     assert.strictEqual(master.classList.contains("on"), false);
+    assert.strictEqual(labels.classList.contains("disabled"), true);
+    assert.strictEqual(labels.attributes["aria-disabled"], "true");
+    assert.strictEqual(labels.tabIndex, -1);
     assert.strictEqual(elapsed.classList.contains("disabled"), true);
     assert.strictEqual(elapsed.attributes["aria-disabled"], "true");
     assert.strictEqual(elapsed.tabIndex, -1);
