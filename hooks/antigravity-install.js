@@ -4,7 +4,6 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execFileSync: defaultExecFileSync } = require("child_process");
 const { resolveNodeBin } = require("./server-config");
 const { writeJsonAtomic, asarUnpackedPath, formatNodeHookCommand } = require("./json-utils");
 
@@ -121,44 +120,8 @@ function extractExistingAntigravityNodeBin(existingGroup) {
   return null;
 }
 
-function isNodeExecutablePath(value) {
-  return /(?:^|[\\/])node(?:\.exe)?$/i.test(String(value || ""));
-}
-
-function firstNonEmptyLine(value) {
-  return String(value || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || null;
-}
-
-function resolveWindowsNodeBin(options = {}) {
-  const execPath = options.execPath || process.execPath;
-  if (isNodeExecutablePath(execPath)) return execPath;
-
-  const execFileSync = options.execFileSync || defaultExecFileSync;
-  try {
-    const whereExe = process.env.SystemRoot
-      ? path.join(process.env.SystemRoot, "System32", "where.exe")
-      : "where.exe";
-    const output = execFileSync(whereExe, ["node"], {
-      encoding: "utf8",
-      timeout: 2000,
-      windowsHide: true,
-    });
-    const resolved = firstNonEmptyLine(output);
-    if (resolved) return resolved;
-  } catch {}
-
-  return null;
-}
-
 function resolveAntigravityNodeBin(options = {}) {
   if (options.nodeBin !== undefined) return options.nodeBin;
-  const platform = options.platform || process.platform;
-  if (platform === "win32") {
-    return resolveWindowsNodeBin(options);
-  }
   return resolveNodeBin(options);
 }
 
@@ -268,7 +231,6 @@ module.exports = {
     hasAntigravityConfig,
     normalizeSettings,
     resolveAntigravityNodeBin,
-    resolveWindowsNodeBin,
   },
 };
 

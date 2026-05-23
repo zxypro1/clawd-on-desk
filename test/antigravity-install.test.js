@@ -214,6 +214,9 @@ describe("Antigravity hook installer", () => {
       homeDir,
       platform: "win32",
       execPath: nodeBin,
+      accessSync: (candidate) => {
+        if (candidate !== nodeBin) throw new Error(`unexpected access: ${candidate}`);
+      },
       powerShellBin: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
     });
 
@@ -230,9 +233,26 @@ describe("Antigravity hook installer", () => {
       platform: "win32",
       execPath: "C:\\Program Files\\Clawd\\Clawd.exe",
       execFileSync: () => `${nodeBin}\r\n`,
+      accessSync: (candidate) => {
+        if (candidate !== nodeBin) throw new Error(`unexpected access: ${candidate}`);
+      },
     });
 
     assert.strictEqual(resolved, nodeBin);
+  });
+
+  it("ignores Windows scoop shims through the shared node resolver", () => {
+    const resolved = __test.resolveAntigravityNodeBin({
+      platform: "win32",
+      execPath: "C:\\Program Files\\Clawd\\Clawd.exe",
+      execFileSync: () => "C:\\Users\\me\\scoop\\shims\\node.exe\r\n",
+      accessSync: () => {},
+      env: {
+        SystemRoot: "C:\\Windows",
+      },
+    });
+
+    assert.strictEqual(resolved, null);
   });
 
   it("preserves an existing Windows node.exe path when detection fails later", () => {
@@ -253,6 +273,7 @@ describe("Antigravity hook installer", () => {
       platform: "win32",
       execPath: "C:\\Program Files\\Clawd\\Clawd.exe",
       execFileSync: () => { throw new Error("where failed"); },
+      accessSync: () => { throw new Error("missing"); },
       powerShellBin: options.powerShellBin,
     });
 
