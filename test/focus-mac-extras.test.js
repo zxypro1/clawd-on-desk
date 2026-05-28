@@ -219,6 +219,180 @@ describe("Ghostty focus (macOS)", () => {
     }, 1500);
   });
 
+  it("tries Ghostty tty precision before cwd fallback when pidChain has a tty", (t, done) => {
+    const calls = [];
+    const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
+      if (typeof opts === "function") { cb = opts; opts = {}; }
+      calls.push({ cmd, args: [...args] });
+      if (cmd === "ps") {
+        const joined = args.join(" ");
+        if (joined.includes("comm=")) {
+          if (cb) cb(null, commLine("ghostty"), "");
+          return;
+        }
+        if (joined.includes("tty=")) {
+          if (cb) cb(null, "  200 ttys007\n  201 ttys007\n", "");
+          return;
+        }
+      }
+      if (cmd === "osascript") {
+        const script = args.find((a) => typeof a === "string" && a.includes('tell application "Ghostty"')) || "";
+        if (script.includes('tell application "Ghostty"') && script.includes("whose tty ends with")) {
+          if (cb) cb(null, "ok-tty\n", "");
+          return;
+        }
+        if (cb) cb(null, "", "");
+        return;
+      }
+      if (cb) cb(null, "", "");
+    });
+
+    const { focusTerminalWindow } = initFocus({});
+    focusTerminalWindow(11940, "/same/project", null, [200, 201, 11940]);
+
+    setTimeout(() => {
+      cleanup();
+      const ttyCall = calls.find((c) => c.cmd === "ps" && c.args.join(" ").includes("tty="));
+      assert.ok(ttyCall, "Should look up tty from pidChain for Ghostty precision");
+      assert.ok(
+        ttyCall.args.includes("200,201"),
+        `Should exclude sourcePid from tty lookup, got ${ttyCall.args.join(" ")}`
+      );
+
+      const ghosttyScripts = calls
+        .filter((c) => c.cmd === "osascript")
+        .map((c) => c.args.find((a) => typeof a === "string" && a.includes('tell application "Ghostty"')) || "")
+        .filter((script) => script.includes('tell application "Ghostty"'));
+      const precise = ghosttyScripts.find((script) =>
+        script.includes("whose tty ends with") &&
+        script.includes("ttys007")
+      );
+      assert.ok(precise, "Should dispatch Ghostty tty precise AppleScript");
+      assert.ok(
+        !ghosttyScripts.some((script) => script.includes("working directory")),
+        "Should not run cwd fallback after precise Ghostty focus succeeds"
+      );
+      done();
+    }, 1800);
+  });
+
+  it("uses Ghostty pid precision when tty misses", (t, done) => {
+    const calls = [];
+    const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
+      if (typeof opts === "function") { cb = opts; opts = {}; }
+      calls.push({ cmd, args: [...args] });
+      if (cmd === "ps") {
+        const joined = args.join(" ");
+        if (joined.includes("comm=")) {
+          if (cb) cb(null, commLine("ghostty"), "");
+          return;
+        }
+        if (joined.includes("tty=")) {
+          if (cb) cb(null, "  200 ttys009\n", "");
+          return;
+        }
+      }
+      if (cmd === "osascript") {
+        const script = args.find((a) => typeof a === "string" && a.includes('tell application "Ghostty"')) || "";
+        if (script.includes('tell application "Ghostty"') && script.includes("whose tty ends with")) {
+          if (cb) cb(null, "miss\n", "");
+          return;
+        }
+        if (script.includes('tell application "Ghostty"') && script.includes("whose pid is")) {
+          if (cb) cb(null, "ok-pid\n", "");
+          return;
+        }
+        if (cb) cb(null, "ok-cwd\n", "");
+        return;
+      }
+      if (cb) cb(null, "", "");
+    });
+
+    const { focusTerminalWindow } = initFocus({});
+    focusTerminalWindow(11940, "/same/project", null, [200, 11940]);
+
+    setTimeout(() => {
+      cleanup();
+      const ghosttyScripts = calls
+        .filter((c) => c.cmd === "osascript")
+        .map((c) => c.args.find((a) => typeof a === "string" && a.includes('tell application "Ghostty"')) || "")
+        .filter((script) => script.includes('tell application "Ghostty"'));
+      assert.ok(
+        ghosttyScripts.some((script) => script.includes("whose tty ends with")),
+        "Should try Ghostty tty focus first"
+      );
+      assert.ok(
+        ghosttyScripts.some((script) => script.includes("whose pid is") && script.includes("200")),
+        "Should use Ghostty pid focus after tty misses"
+      );
+      assert.ok(
+        !ghosttyScripts.some((script) => script.includes("working directory")),
+        "Should not run cwd fallback after pid focus succeeds"
+      );
+      done();
+    }, 1800);
+  });
+
+  it("falls back to Ghostty cwd focus when tty precision is unavailable", (t, done) => {
+    const calls = [];
+    const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
+      if (typeof opts === "function") { cb = opts; opts = {}; }
+      calls.push({ cmd, args: [...args] });
+      if (cmd === "ps") {
+        const joined = args.join(" ");
+        if (joined.includes("comm=")) {
+          if (cb) cb(null, commLine("ghostty"), "");
+          return;
+        }
+        if (joined.includes("tty=")) {
+          if (cb) cb(null, "  200 ttys008\n", "");
+          return;
+        }
+      }
+      if (cmd === "osascript") {
+        const script = args.find((a) => typeof a === "string" && a.includes('tell application "Ghostty"')) || "";
+        if (script.includes('tell application "Ghostty"') && script.includes("whose tty ends with")) {
+          if (cb) cb(new Error("Ghostty dictionary does not expose tty"), "", "");
+          return;
+        }
+        if (script.includes('tell application "Ghostty"') && script.includes("whose pid is")) {
+          if (cb) cb(null, "miss\n", "");
+          return;
+        }
+        if (cb) cb(null, "ok-cwd\n", "");
+        return;
+      }
+      if (cb) cb(null, "", "");
+    });
+
+    const { focusTerminalWindow } = initFocus({});
+    focusTerminalWindow(11940, "/same/project", null, [200, 11940]);
+
+    setTimeout(() => {
+      cleanup();
+      const ghosttyScripts = calls
+        .filter((c) => c.cmd === "osascript")
+        .map((c) => c.args.find((a) => typeof a === "string" && a.includes('tell application "Ghostty"')) || "")
+        .filter((script) => script.includes('tell application "Ghostty"'));
+      assert.ok(
+        ghosttyScripts.some((script) => script.includes("whose tty ends with")),
+        "Should try Ghostty precise focus first"
+      );
+      assert.ok(
+        ghosttyScripts.some((script) => script.includes("whose pid is")),
+        "Should try Ghostty pid focus before cwd fallback"
+      );
+      assert.ok(
+        ghosttyScripts.some((script) =>
+          script.includes("working directory") &&
+          script.includes("/same/project")
+        ),
+        "Should fall back to cwd focus when precise Ghostty focus fails"
+      );
+      done();
+    }, 2400);
+  });
+
   it("does not dispatch Ghostty AppleScript when source process is not ghostty", (t, done) => {
     const calls = [];
     const { initFocus, cleanup } = loadFocusWithMock(function mockExecFile(cmd, args, opts, cb) {
