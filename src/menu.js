@@ -71,9 +71,12 @@ module.exports = function initMenu(ctx) {
         }
         // Revert the optimistic check until the user confirms.
         menuItem.checked = false;
-        const parent = ctx.win && !ctx.win.isDestroyed() ? ctx.win : null;
+        // No parent window: attaching the dialog to ctx.win (the small pet
+        // window) makes macOS render it as a sheet centered on the pet. A
+        // parentless dialog is a standalone window centered on the screen,
+        // which is what a danger confirmation should be.
         Promise.resolve(
-          dialog.showMessageBox(parent, {
+          dialog.showMessageBox({
             type: "warning",
             buttons: [t("autoApproveAllConfirmEnable"), t("autoApproveAllConfirmCancel")],
             defaultId: 1,

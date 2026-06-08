@@ -40,7 +40,14 @@ function makeFakeElectron(messageBoxResponse) {
       getDisplayNearestPoint: () => ({ id: 1 }),
     },
     dialog: {
-      showMessageBox(parent, opts) {
+      // Electron's showMessageBox is overloaded: (options) or (parent, options).
+      // The auto-pilot confirm must be parentless (standalone, screen-centered)
+      // so it doesn't render as a sheet on the tiny pet window — so normalize
+      // both shapes and record whether a parent window was passed.
+      showMessageBox(arg1, arg2) {
+        const hasParent = arg2 !== undefined;
+        const parent = hasParent ? arg1 : undefined;
+        const opts = hasParent ? arg2 : arg1;
         dialogCalls.push({ parent, opts });
         return Promise.resolve({ response: messageBoxResponse });
       },
@@ -165,6 +172,7 @@ describe("auto-pilot menu toggle", () => {
     await new Promise((r) => setTimeout(r, 0));
     assert.strictEqual(fake._dialogCalls.length, 1, "confirm dialog shown");
     assert.strictEqual(fake._dialogCalls[0].opts.type, "warning");
+    assert.strictEqual(fake._dialogCalls[0].parent, undefined, "dialog is parentless (screen-centered, not a sheet on the pet)");
     assert.strictEqual(committed, true, "committed true after confirm");
     // menu.js's internal rebuildAllMenus() re-renders the context menu, so the
     // freshly built item reflects the committed value.
