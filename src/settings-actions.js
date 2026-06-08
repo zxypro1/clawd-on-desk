@@ -199,6 +199,7 @@ const updateRegistry = {
   sessionHudPinned: requireBoolean("sessionHudPinned"),
   hideBubbles: requireBoolean("hideBubbles"),
   permissionBubblesEnabled: requireBoolean("permissionBubblesEnabled"),
+  autoApproveAllPermissions: requireBoolean("autoApproveAllPermissions"),
   notificationBubbleAutoCloseSeconds: requireIntegerInRange(
     "notificationBubbleAutoCloseSeconds",
     0,

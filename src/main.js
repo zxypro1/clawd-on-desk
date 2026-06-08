@@ -1009,6 +1009,12 @@ const _permCtx = {
   reapplyMacVisibility,
   isAgentPermissionsEnabled: (agentId) =>
     _isAgentPermissionsEnabled({ agents: _settingsController.get("agents") }, agentId),
+  // DANGER "auto-pilot": when true, showPermissionBubble auto-approves every
+  // request instead of rendering a bubble. DND / per-agent / headless gates
+  // run earlier in the route, so they still win — this only fires once a
+  // bubble would otherwise show.
+  isAutoApproveAllEnabled: () =>
+    _settingsController.get("autoApproveAllPermissions") === true,
   focusTerminalForSession: (sessionId, options = {}) => {
     focusDashboardSession(sessionId, {
       requestSource: options.requestSource || "permission-bubble",

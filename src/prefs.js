@@ -38,7 +38,7 @@ const {
 } = require("./bubble-policy");
 const { normalizeSessionAliases } = require("./session-alias");
 
-const CURRENT_VERSION = 8;
+const CURRENT_VERSION = 9;
 
 // ── Schema ──
 // Each field has: type, default OR defaultFactory, optional enum/normalize/validate.
@@ -122,6 +122,12 @@ const SCHEMA = {
   },
   hideBubbles: { type: "boolean", default: false },
   permissionBubblesEnabled: { type: "boolean", default: true },
+  // DANGER: "auto-pilot". When true, every agent permission request is
+  // auto-approved without showing a bubble or asking the user. Default false;
+  // the only way to flip it on is the explicit, confirmation-gated toggle in
+  // Settings. DND and per-agent permissionsEnabled gates still win — they are
+  // checked before showPermissionBubble, which is where auto-approve hooks in.
+  autoApproveAllPermissions: { type: "boolean", default: false },
   notificationBubbleAutoCloseSeconds: {
     type: "number",
     default: NOTIFICATION_DEFAULT_SECONDS,
@@ -469,6 +475,14 @@ function migrate(raw) {
       out.tgApproval.notifyOnComplete = false;
     }
     out.version = 8;
+  }
+  // v8 -> v9: introduce autoApproveAllPermissions ("auto-pilot"). No data
+  // conversion — the new key fills from its schema default (false) via
+  // validate(); the version bump just records that the schema grew. The
+  // default-off matters: an upgrading user must never silently inherit
+  // auto-approval.
+  if (out.version < 9) {
+    out.version = 9;
   }
   if ((typeof out.version === "number" ? out.version : 0) < CURRENT_VERSION) {
     out.version = CURRENT_VERSION;

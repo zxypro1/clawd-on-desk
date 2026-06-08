@@ -571,7 +571,38 @@ function repositionBubbles() {
   }
 }
 
+// DANGER "auto-pilot" chokepoint. Every agent branch in the /permission route
+// funnels through showPermissionBubble after its DND / per-agent / headless
+// gates have already run, so this is the single place to honor the
+// autoApproveAllPermissions toggle without auto-approving requests those gates
+// meant to drop. Passive notifications (codex/kimi) and the hardware-buddy
+// self-test are excluded — they are not approvals and carry no HTTP response
+// to satisfy. Returns true when it consumed the entry (caller must NOT build a
+// bubble), false otherwise.
+function maybeAutoApprovePermission(permEntry) {
+  if (!permEntry) return false;
+  if (typeof ctx.isAutoApproveAllEnabled !== "function" || !ctx.isAutoApproveAllEnabled()) {
+    return false;
+  }
+  if (permEntry.isCodexNotify || permEntry.isKimiNotify) return false;
+  if (isHardwareBuddyTestPermission(permEntry)) return false;
+
+  // Elicitation (AskUserQuestion / Hermes clarify): a bare "allow" with no
+  // resolvedUpdatedInput is sent as a DENY downstream (see resolvePermissionEntry).
+  // Pre-fill empty answers so auto-pilot actually allows it.
+  if (permEntry.isElicitation) {
+    permEntry.resolvedUpdatedInput = buildElicitationUpdatedInput(permEntry.toolInput, {});
+  }
+
+  permLog(`auto-approve: tool=${permEntry.toolName} session=${permEntry.sessionId} agent=${permEntry.agentId || "claude-code"}`);
+  resolvePermissionEntry(permEntry, "allow");
+  return true;
+}
+
 function showPermissionBubble(permEntry) {
+  // Auto-pilot: if enabled, approve immediately and never render a bubble.
+  if (maybeAutoApprovePermission(permEntry)) return;
+
   const sugCount = (permEntry.suggestions || []).length;
   const wa = getAnchorWorkArea();
   const bh = clampBubbleHeight(estimateBubbleHeight(sugCount), wa.height);
@@ -950,6 +981,11 @@ function dismissPermissionForTerminal(perm) {
 
 function maybeStartRemoteApproval(permEntry) {
   if (!isRemoteApprovalActionable(permEntry)) return false;
+  // Auto-pilot resolves synchronously inside showPermissionBubble, but the CC
+  // and Codex route branches call startRemoteApproval right after. If the
+  // entry is already gone from the pending list it was resolved (auto-approved
+  // or otherwise) — don't fire a Telegram card for a closed request.
+  if (pendingPermissions.indexOf(permEntry) === -1) return false;
   const client = getTelegramApprovalClient();
   if (!client || typeof client.requestApproval !== "function") return false;
   if (typeof client.isEnabled === "function" && !client.isEnabled()) return false;

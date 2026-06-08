@@ -24,6 +24,7 @@
     "hideBubbles",
     "bubbleFollowPet",
     "permissionBubblesEnabled",
+    "autoApproveAllPermissions",
     "notificationBubbleAutoCloseSeconds",
     "updateBubbleAutoCloseSeconds",
     "sessionStaleMs",
@@ -167,7 +168,35 @@
         labelKey: "rowBubbleFollow",
         descKey: "rowBubbleFollowDesc",
       }),
+      helpers.buildSwitchRow({
+        key: "autoApproveAllPermissions",
+        labelKey: "rowAutoApproveAll",
+        descKey: "rowAutoApproveAllDesc",
+        onToggle: ({ nextRaw }) => confirmAutoApproveAll(nextRaw),
+      }),
     ]));
+  }
+
+  // DANGER "auto-pilot": enabling auto-approves every agent permission request
+  // (Bash, file writes, rm — everything) with no prompt. Gate the ENABLE path
+  // behind a destructive confirm; disabling is always safe and immediate.
+  function confirmAutoApproveAll(nextRaw) {
+    if (!nextRaw) return window.settingsAPI.update("autoApproveAllPermissions", false);
+    return showAutoApproveAllConfirmModal().then((actionId) => {
+      if (actionId !== "enable") return { status: "ok", noop: true };
+      return window.settingsAPI.update("autoApproveAllPermissions", true);
+    });
+  }
+
+  function showAutoApproveAllConfirmModal() {
+    return showSettingsConfirmModal({
+      title: t("autoApproveAllConfirmTitle"),
+      detail: t("autoApproveAllConfirmDetail"),
+      actions: [
+        { id: "enable", label: t("autoApproveAllConfirmEnable"), tone: "danger" },
+        { id: "cancel", label: t("autoApproveAllConfirmCancel"), tone: "accent", defaultFocus: true },
+      ],
+    });
   }
 
   function confirmDisableClaudeHookManagement(nextRaw) {

@@ -854,6 +854,26 @@ describe("prefs.migrate v7 → v8 (Telegram bare completion default)", () => {
   });
 });
 
+describe("prefs.migrate v8 → v9 (auto-approve auto-pilot)", () => {
+  it("defaults autoApproveAllPermissions to false for upgrading users", () => {
+    const upgraded = prefs.migrate({ version: 8, lang: "en" });
+    const validated = prefs.validate(upgraded);
+    assert.strictEqual(validated.version, prefs.CURRENT_VERSION);
+    assert.strictEqual(validated.autoApproveAllPermissions, false);
+  });
+
+  it("preserves an explicit autoApproveAllPermissions=true across migrate", () => {
+    const validated = prefs.validate(
+      prefs.migrate({ version: 8, autoApproveAllPermissions: true })
+    );
+    assert.strictEqual(validated.autoApproveAllPermissions, true);
+  });
+
+  it("fresh defaults keep auto-pilot off", () => {
+    assert.strictEqual(prefs.getDefaults().autoApproveAllPermissions, false);
+  });
+});
+
 describe("prefs.load", () => {
   it("returns defaults for missing file (ENOENT) without backup", () => {
     const p = makeTempPath();
