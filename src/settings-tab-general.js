@@ -172,6 +172,7 @@
         key: "autoApproveAllPermissions",
         labelKey: "rowAutoApproveAll",
         descKey: "rowAutoApproveAllDesc",
+        danger: true,
         onToggle: ({ nextRaw }) => confirmAutoApproveAll(nextRaw),
       }),
     ]));

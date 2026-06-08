@@ -538,6 +538,7 @@
     descExtraKey = null,
     onToggle = null,
     actionButton = null,
+    danger = false,
   }) {
     const row = document.createElement("div");
     row.className = "row";
@@ -547,7 +548,9 @@
         `<span class="row-desc"></span>` +
       `</div>` +
       `<div class="row-control"><div class="switch" role="switch" tabindex="0"></div></div>`;
-    row.querySelector(".row-label").textContent = t(labelKey);
+    const labelEl = row.querySelector(".row-label");
+    labelEl.textContent = t(labelKey);
+    if (danger) labelEl.classList.add("row-label-danger");
     const text = row.querySelector(".row-text");
     const desc = row.querySelector(".row-desc");
     if (descKey) desc.textContent = t(descKey);

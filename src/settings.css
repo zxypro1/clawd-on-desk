@@ -543,6 +543,16 @@ html, body {
   display: block;
   line-height: 1.4;
 }
+/* Danger row: red label marks a destructive/risky setting (e.g. auto-pilot). */
+.row-label.row-label-danger {
+  color: #d11a2a;
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) {
+  .row-label.row-label-danger {
+    color: #ff6b6b;
+  }
+}
 
 .row-control {
   flex-shrink: 0;

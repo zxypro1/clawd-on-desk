@@ -2895,6 +2895,26 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes("claudeHooksDisconnectConfirmKeep"));
   });
 
+  it("wires the danger auto-pilot toggle with a confirm modal and red label", () => {
+    const generalSource = fs.readFileSync(path.join(SRC_DIR, "settings-tab-general.js"), "utf8");
+    const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
+    const i18nSource = fs.readFileSync(SETTINGS_I18N, "utf8");
+    const css = fs.readFileSync(SETTINGS_CSS, "utf8");
+    // Row is registered with danger:true and routes the enable path through a confirm.
+    assert.ok(generalSource.includes('key: "autoApproveAllPermissions"'));
+    assert.ok(generalSource.includes("danger: true"));
+    assert.ok(generalSource.includes("confirmAutoApproveAll"));
+    assert.ok(generalSource.includes("showAutoApproveAllConfirmModal"));
+    assert.ok(generalSource.includes('{ id: "enable", label: t("autoApproveAllConfirmEnable"), tone: "danger" }'));
+    // buildSwitchRow honors danger by painting the label red.
+    assert.ok(coreSource.includes("row-label-danger"));
+    assert.ok(css.includes(".row-label.row-label-danger"));
+    // Simple title + localized confirm strings exist.
+    assert.ok(i18nSource.includes('rowAutoApproveAll: "Auto-pilot"'));
+    assert.ok(i18nSource.includes('rowAutoApproveAll: "自动驾驶"'));
+    assert.ok(i18nSource.includes("autoApproveAllConfirmTitle"));
+  });
+
   it("clears successful switch transient state so rerenders do not keep wait cursors", () => {
     const coreSource = fs.readFileSync(SETTINGS_UI_CORE, "utf8");
     assert.ok(
