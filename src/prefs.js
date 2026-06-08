@@ -476,12 +476,13 @@ function migrate(raw) {
     }
     out.version = 8;
   }
-  // v8 -> v9: introduce autoApproveAllPermissions ("auto-pilot"). No data
-  // conversion — the new key fills from its schema default (false) via
-  // validate(); the version bump just records that the schema grew. The
-  // default-off matters: an upgrading user must never silently inherit
-  // auto-approval.
+  // v8 -> v9: introduce autoApproveAllPermissions ("auto-pilot"). Force the
+  // value OFF on upgrade — a v8 prefs file could not have legitimately set this
+  // key (it didn't exist yet), so any pre-existing value is stale or planted.
+  // Clearing it guarantees an upgrading user never silently inherits
+  // auto-approval; the only way to turn it on is the confirmation-gated path.
   if (out.version < 9) {
+    out.autoApproveAllPermissions = false;
     out.version = 9;
   }
   if ((typeof out.version === "number" ? out.version : 0) < CURRENT_VERSION) {

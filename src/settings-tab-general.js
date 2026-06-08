@@ -194,10 +194,13 @@
   // (Bash, file writes, rm — everything) with no prompt. Gate the ENABLE path
   // behind a destructive confirm; disabling is always safe and immediate.
   function confirmAutoApproveAll(nextRaw) {
-    if (!nextRaw) return window.settingsAPI.update("autoApproveAllPermissions", false);
+    // Route through the setAutoApproveAll command (not settings:update, which
+    // now rejects this key). Enabling carries confirmed:true only after the
+    // user accepts the danger modal, so the confirmation is a real gate.
+    if (!nextRaw) return window.settingsAPI.command("setAutoApproveAll", { enabled: false });
     return showAutoApproveAllConfirmModal().then((actionId) => {
       if (actionId !== "enable") return { status: "ok", noop: true };
-      return window.settingsAPI.update("autoApproveAllPermissions", true);
+      return window.settingsAPI.command("setAutoApproveAll", { enabled: true, confirmed: true });
     });
   }
 

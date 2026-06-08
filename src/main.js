@@ -2476,7 +2476,15 @@ const _menuCtx = {
     console.warn("Clawd: setAllBubblesHidden failed:", err && err.message);
   }); },
   get autoApproveAllPermissions() { return _settingsController.get("autoApproveAllPermissions") === true; },
-  set autoApproveAllPermissions(v) { _settingsController.applyUpdate("autoApproveAllPermissions", !!v); },
+  // Route through the gated command. The menu shows its own native danger
+  // confirm before setting true, so it passes confirmed:true; disabling needs
+  // no confirmation. applyUpdate is intentionally NOT used — the field is
+  // gated so the confirm dialog is a real boundary, not UI-only.
+  set autoApproveAllPermissions(v) {
+    _settingsController.applyCommand("setAutoApproveAll", { enabled: !!v, confirmed: true }).catch((err) => {
+      console.warn("Clawd: setAutoApproveAll failed:", err && err.message);
+    });
+  },
   get soundMuted() { return soundMuted; },
   set soundMuted(v) { _settingsController.applyUpdate("soundMuted", v); },
   get soundVolume() { return soundVolume; },

@@ -862,11 +862,14 @@ describe("prefs.migrate v8 → v9 (auto-approve auto-pilot)", () => {
     assert.strictEqual(validated.autoApproveAllPermissions, false);
   });
 
-  it("preserves an explicit autoApproveAllPermissions=true across migrate", () => {
+  it("clears a planted autoApproveAllPermissions=true on upgrade (never inherit auto-approval)", () => {
+    // A v8 prefs file could not have legitimately set this key — it didn't
+    // exist yet. Migration must strip any stale/planted value so an upgrading
+    // user never silently inherits "approve everything".
     const validated = prefs.validate(
       prefs.migrate({ version: 8, autoApproveAllPermissions: true })
     );
-    assert.strictEqual(validated.autoApproveAllPermissions, true);
+    assert.strictEqual(validated.autoApproveAllPermissions, false);
   });
 
   it("fresh defaults keep auto-pilot off", () => {

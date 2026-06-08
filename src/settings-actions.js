@@ -452,6 +452,31 @@ function setAllBubblesHidden(payload, deps) {
   return { status: "ok", commit: buildAggregateHideCommit(hidden, deps && deps.snapshot) };
 }
 
+// DANGER "auto-pilot" writer. Enabling auto-approve-everything is a one-way
+// trust decision, so this command — not a raw settings:update — is the only
+// path allowed to flip it ON, and it requires an explicit confirmed:true.
+// The settings:update IPC handler rejects the field directly (see
+// settings-ipc.js), so the confirmation dialog is a real gate, not just UI
+// decoration: anything reaching the data layer must carry proof the user
+// confirmed. Disabling needs no confirmation (turning a danger toggle off is
+// always safe).
+function setAutoApproveAll(payload, _deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "setAutoApproveAll: payload must be an object" };
+  }
+  const enabled = payload.enabled;
+  if (typeof enabled !== "boolean") {
+    return { status: "error", message: "setAutoApproveAll.enabled must be a boolean" };
+  }
+  if (enabled && payload.confirmed !== true) {
+    return {
+      status: "error",
+      message: "setAutoApproveAll: enabling requires confirmed:true (user must confirm the danger dialog)",
+    };
+  }
+  return { status: "ok", commit: { autoApproveAllPermissions: enabled } };
+}
+
 function setBubbleCategoryEnabled(payload, deps) {
   if (!payload || typeof payload !== "object") {
     return { status: "error", message: "setBubbleCategoryEnabled: payload must be an object" };
@@ -1144,6 +1169,7 @@ const commandRegistry = {
   setAgentFlag,
   setAgentPermissionMode,
   setAllBubblesHidden,
+  setAutoApproveAll,
   setBubbleCategoryEnabled,
   "sessionCleanup.setTriple": setSessionCleanupTriple,
   setSessionAlias,
