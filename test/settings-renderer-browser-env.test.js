@@ -2602,7 +2602,7 @@ describe("settings renderer browser environment", () => {
 
     const sections = generalHarness.content.querySelectorAll(".section");
     const sectionTitles = sections.map((section) => section.querySelector(".section-title").textContent);
-    assert.deepStrictEqual(sectionTitles, ["Appearance", "Session management", "Startup", "Bubbles"]);
+    assert.deepStrictEqual(sectionTitles, ["Appearance", "Session management", "Startup", "Bubbles", "Permissions"]);
     assert.strictEqual(generalHarness.content.querySelector(".hardware-buddy-collapsible"), null);
 
     const remoteHarness = loadTelegramApprovalTabForTest({
@@ -2913,6 +2913,9 @@ describe("settings renderer browser environment", () => {
     assert.ok(i18nSource.includes('rowAutoApproveAll: "Auto-pilot"'));
     assert.ok(i18nSource.includes('rowAutoApproveAll: "自动驾驶"'));
     assert.ok(i18nSource.includes("autoApproveAllConfirmTitle"));
+    // Lives in its own Permissions section, not under Bubbles.
+    assert.ok(generalSource.includes('t("sectionPermissions")'));
+    assert.ok(i18nSource.includes('sectionPermissions: "Permissions"'));
   });
 
   it("clears successful switch transient state so rerenders do not keep wait cursors", () => {

@@ -168,6 +168,12 @@
         labelKey: "rowBubbleFollow",
         descKey: "rowBubbleFollowDesc",
       }),
+    ]));
+
+    // Permissions is its own section (not "Bubbles") because auto-pilot is a
+    // permission-handling behavior, not a bubble-display preference. Kept last
+    // so the danger toggle sits at the bottom, away from everyday settings.
+    parent.appendChild(helpers.buildSection(t("sectionPermissions"), [
       helpers.buildSwitchRow({
         key: "autoApproveAllPermissions",
         labelKey: "rowAutoApproveAll",
