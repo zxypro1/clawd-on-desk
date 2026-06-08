@@ -127,7 +127,13 @@ const SCHEMA = {
   // the only way to flip it on is the explicit, confirmation-gated toggle in
   // Settings. DND and per-agent permissionsEnabled gates still win — they are
   // checked before showPermissionBubble, which is where auto-approve hooks in.
-  autoApproveAllPermissions: { type: "boolean", default: false },
+  //
+  // `ephemeral: true` — this field is runtime-only. It is NOT written to disk
+  // by save(), and load()/validate() force it back to the default. So enabling
+  // auto-pilot lasts only for the current app session: quit and relaunch and
+  // it's off again, requiring a fresh confirmation. A dangerous "approve
+  // everything" mode must never silently persist across restarts.
+  autoApproveAllPermissions: { type: "boolean", default: false, ephemeral: true },
   notificationBubbleAutoCloseSeconds: {
     type: "number",
     default: NOTIFICATION_DEFAULT_SECONDS,
@@ -324,6 +330,10 @@ function validate(raw) {
   for (const key of SCHEMA_KEYS) {
     if (!(key in raw)) continue;
     const field = SCHEMA[key];
+    // Ephemeral (runtime-only) fields are never restored from a snapshot —
+    // they always reset to their default on load. This is how auto-pilot stays
+    // off across restarts even if a value somehow landed on disk.
+    if (field.ephemeral) continue;
     let value = raw[key];
     if (field.type === "object" && typeof field.normalize === "function") {
       value = field.normalize(value, out[key]);
@@ -793,6 +803,12 @@ function load(prefsPath) {
 
 function save(prefsPath, snapshot) {
   const validated = validate(snapshot);
+  // Ephemeral (runtime-only) fields never touch disk — drop them so a
+  // dangerous mode like auto-pilot can't persist across restarts, and so the
+  // prefs file never contains a scary `autoApproveAllPermissions: true`.
+  for (const key of SCHEMA_KEYS) {
+    if (SCHEMA[key].ephemeral) delete validated[key];
+  }
   // Ensure parent directory exists (Electron userData is normally created by the
   // framework, but we can't assume it for tests).
   try {

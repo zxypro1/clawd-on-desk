@@ -877,6 +877,36 @@ describe("prefs.migrate v8 → v9 (auto-approve auto-pilot)", () => {
   });
 });
 
+describe("prefs ephemeral fields (auto-pilot does not persist)", () => {
+  it("validate() never restores a persisted autoApproveAllPermissions=true", () => {
+    assert.strictEqual(prefs.validate({ autoApproveAllPermissions: true }).autoApproveAllPermissions, false);
+  });
+
+  it("save() strips autoApproveAllPermissions from the on-disk file", () => {
+    const p = makeTempPath();
+    prefs.save(p, { ...prefs.getDefaults(), autoApproveAllPermissions: true, lang: "zh" });
+    const onDisk = JSON.parse(fs.readFileSync(p, "utf8"));
+    assert.strictEqual("autoApproveAllPermissions" in onDisk, false, "ephemeral key must not be written");
+    assert.strictEqual(onDisk.lang, "zh", "non-ephemeral fields still persist");
+  });
+
+  it("survives a quit/relaunch as OFF even after being enabled mid-session", () => {
+    const p = makeTempPath();
+    // Session 1: user turned auto-pilot on, then the app persisted prefs.
+    prefs.save(p, { ...prefs.getDefaults(), autoApproveAllPermissions: true });
+    // Session 2: next launch reads prefs from disk.
+    const { snapshot } = prefs.load(p);
+    assert.strictEqual(snapshot.autoApproveAllPermissions, false, "auto-pilot must be off on relaunch");
+  });
+
+  it("load() ignores a hand-edited autoApproveAllPermissions:true in the file", () => {
+    const p = makeTempPath();
+    fs.writeFileSync(p, JSON.stringify({ version: prefs.CURRENT_VERSION, autoApproveAllPermissions: true }));
+    const { snapshot } = prefs.load(p);
+    assert.strictEqual(snapshot.autoApproveAllPermissions, false);
+  });
+});
+
 describe("prefs.load", () => {
   it("returns defaults for missing file (ENOENT) without backup", () => {
     const p = makeTempPath();
